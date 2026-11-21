@@ -1,0 +1,21 @@
+services:
+  game:
+    build: .
+    ports:
+      - "127.0.0.1:8101:8101"
+    environment:
+      VL_DU_LIEU: /data
+    volumes:
+      - type: volume
+        source: game_data
+        target: /data
+      - type: bind
+        source: ./assets
+        target: /app/assets
+        read_only: true
+        bind:
+          create_host_path: false
+    restart: unless-stopped
+
+volumes:
+  game_data:

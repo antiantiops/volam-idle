@@ -1,0 +1,26 @@
+# Env & credentials
+.env
+.env.*
+credentials/
+*.pem
+*.key
+
+# Local runtime data & backups
+du-lieu/
+data/
+sao-luu/
+*.bak
+*.tar
+*.tar.gz
+*.tgz
+*.7z
+*.rar
+
+# User-supplied assets & archives
+assets/
+*.zip
+
+# Logs & OS files
+*.log
+.DS_Store
+Thumbs.db
