@@ -1,0 +1,313 @@
+{
+  "source": {
+    "table": "client/settings/item/goldequip.txt",
+    "revision": "9c65c6547fe572e0b09227a0b083f42509bedcae",
+    "note": "community reference, not official VNG"
+  },
+  "items": [
+    {
+      "k": "hk:217",
+      "n": "An Bang Băng Tinh Thạch Hạng Liên",
+      "t": 4,
+      "p": 0,
+      "s": 4,
+      "x": -1,
+      "sv": 7,
+      "gr": "hkdb",
+      "c": [
+        2,
+        1
+      ],
+      "ic": "item/equip/nick/obj-neck07.png",
+      "ln": "Trang bị Hoàng Kim"
+    },
+    {
+      "k": "hk:218",
+      "n": "An Bang Cúc Hoa Thạch Chỉ Hoàn",
+      "t": 3,
+      "p": 0,
+      "s": 2,
+      "x": -1,
+      "sv": 7,
+      "gr": "hkdb",
+      "c": [
+        1,
+        1
+      ],
+      "ic": "item/equip/ring/obj-ring07.png",
+      "ln": "Trang bị Hoàng Kim"
+    },
+    {
+      "k": "hk:219",
+      "n": "An Bang Điền Hoàng Thạch Ngọc Bội",
+      "t": 9,
+      "p": 0,
+      "s": 1,
+      "x": -1,
+      "sv": 7,
+      "gr": "hkdb",
+      "c": [
+        1,
+        2
+      ],
+      "ic": "item/equip/waist/obj-waist18.png",
+      "ln": "Trang bị Hoàng Kim"
+    },
+    {
+      "k": "hk:220",
+      "n": "An Bang Kê Huyết Thạch Giới Chỉ",
+      "t": 3,
+      "p": 0,
+      "s": 3,
+      "x": -1,
+      "sv": 7,
+      "gr": "hkdb",
+      "c": [
+        1,
+        1
+      ],
+      "ic": "item/equip/ring/obj-ring06.png",
+      "ln": "Trang bị Hoàng Kim"
+    },
+    {
+      "k": "hk:399",
+      "n": "Định Quốc Thanh Sa Trường Sam",
+      "t": 2,
+      "p": 0,
+      "s": 0,
+      "x": -1,
+      "sv": 7,
+      "gr": "hkdb",
+      "c": [
+        2,
+        3
+      ],
+      "ic": "item/equip/armor/obj-ma-cloth11-3.png",
+      "ln": "Trang bị Hoàng Kim"
+    },
+    {
+      "k": "hk:400",
+      "n": "Định Quốc Ô Sa Phát Quán",
+      "t": 7,
+      "p": 0,
+      "s": 0,
+      "x": -1,
+      "sv": 7,
+      "gr": "hkdb",
+      "c": [
+        2,
+        2
+      ],
+      "ic": "item/equip/cap/obj-ma-cap12-1.png",
+      "ln": "Trang bị Hoàng Kim"
+    },
+    {
+      "k": "hk:401",
+      "n": "Định Quốc Xích Quyên Nhuyễn Ngoa",
+      "t": 5,
+      "p": 0,
+      "s": 0,
+      "x": -1,
+      "sv": 7,
+      "gr": "hkdb",
+      "c": [
+        2,
+        2
+      ],
+      "ic": "item/equip/boots/obj-shoes06.png",
+      "ln": "Trang bị Hoàng Kim"
+    },
+    {
+      "k": "hk:402",
+      "n": "Định Quốc Tử Đằng Hộ Uyển",
+      "t": 8,
+      "p": 0,
+      "s": 0,
+      "x": -1,
+      "sv": 7,
+      "gr": "hkdb",
+      "c": [
+        2,
+        1
+      ],
+      "ic": "item/equip/bangle/obj-bangle13.png",
+      "ln": "Trang bị Hoàng Kim"
+    },
+    {
+      "k": "hk:403",
+      "n": "Định Quốc Ngân Tàm Yêu Đái",
+      "t": 6,
+      "p": 0,
+      "s": 0,
+      "x": -1,
+      "sv": 7,
+      "gr": "hkdb",
+      "c": [
+        2,
+        1
+      ],
+      "ic": "item/equip/sash/obj-sash17.png",
+      "ln": "Trang bị Hoàng Kim"
+    }
+  ],
+  "base": {
+    "hk:217": {
+      "cl": 10,
+      "lv": 85,
+      "series": 4,
+      "base": [],
+      "req": [
+        [
+          "requirelevel",
+          85
+        ]
+      ]
+    },
+    "hk:218": {
+      "cl": 8,
+      "lv": 80,
+      "series": 2,
+      "base": [],
+      "req": [
+        [
+          "requirelevel",
+          80
+        ]
+      ]
+    },
+    "hk:219": {
+      "cl": 10,
+      "lv": 75,
+      "series": 1,
+      "base": [],
+      "req": [
+        [
+          "requirelevel",
+          75
+        ]
+      ]
+    },
+    "hk:220": {
+      "cl": 10,
+      "lv": 80,
+      "series": 3,
+      "base": [],
+      "req": [
+        [
+          "requirelevel",
+          80
+        ]
+      ]
+    },
+    "hk:399": {
+      "cl": 10,
+      "lv": 85,
+      "series": 0,
+      "base": [
+        [
+          "armordefense_v",
+          630
+        ],
+        [
+          "durability_v",
+          80
+        ]
+      ],
+      "def": 630,
+      "req": [
+        [
+          "requirelevel",
+          85
+        ]
+      ]
+    },
+    "hk:400": {
+      "cl": 10,
+      "lv": 75,
+      "series": 0,
+      "base": [
+        [
+          "armordefense_v",
+          260
+        ],
+        [
+          "durability_v",
+          70
+        ]
+      ],
+      "def": 260,
+      "req": [
+        [
+          "requirelevel",
+          75
+        ]
+      ]
+    },
+    "hk:401": {
+      "cl": 10,
+      "lv": 80,
+      "series": 0,
+      "base": [
+        [
+          "armordefense_v",
+          140
+        ],
+        [
+          "durability_v",
+          70
+        ]
+      ],
+      "def": 140,
+      "req": [
+        [
+          "requirelevel",
+          80
+        ]
+      ]
+    },
+    "hk:402": {
+      "cl": 10,
+      "lv": 75,
+      "series": 0,
+      "base": [
+        [
+          "armordefense_v",
+          111
+        ],
+        [
+          "durability_v",
+          60
+        ]
+      ],
+      "def": 111,
+      "req": [
+        [
+          "requirelevel",
+          75
+        ]
+      ]
+    },
+    "hk:403": {
+      "cl": 10,
+      "lv": 75,
+      "series": 0,
+      "base": [
+        [
+          "armordefense_v",
+          140
+        ],
+        [
+          "durability_v",
+          60
+        ]
+      ],
+      "def": 140,
+      "req": [
+        [
+          "requirelevel",
+          75
+        ]
+      ]
+    }
+  }
+}

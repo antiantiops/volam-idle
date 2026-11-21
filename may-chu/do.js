@@ -57,6 +57,8 @@ const path = require("path");
 const ROOT = path.join(__dirname, "..");
 const doc = (f) => JSON.parse(fs.readFileSync(path.join(ROOT, f), "utf8"));
 const PACK = doc("assets/web/item/items.json"), GOC = doc("assets/data/do-goc.json").items, DX = doc("assets/data/dong-xanh.json");
+const HK = doc("src/game/hoang-kim.json");
+Object.assign(GOC, HK.base);
 const NKD = () => require("./nhat-ky"); // sổ hoạt động từng tài khoản (nạp lúc dùng)
 const NG = require("./nguon-mon"); // nguồn gốc món: mã riêng + nơi sinh ra + đường đi (anh 18/11 tối — may-chu/nguon-mon.js)
 const CHR = doc("assets/data/char.json"), MS = doc("assets/data/mobstats.json"), CFG = require("./cau-hinh-qt").apDung(doc("cau-hinh.json")); // + phần quản trị sửa ở F10 → Cấu hình (du-lieu/cau-hinh-qt.json — anh 11/11)
@@ -64,7 +66,7 @@ const THUOC = doc("assets/data/thuoc.json"), TC = CFG.thuoc || { chongToiDa: 60,
 const TD = CFG.trenDat || { giay: 133, toiDa: 100 };
 const MAPS = doc("assets/web/map/map.json"), FULL = (() => { try { return doc("assets/web/map/full/index.json"); } catch { return null; } })();
 
-const BY = new Map(PACK.items.map((x) => [x.k, x]));
+const BY = new Map([...PACK.items, ...HK.items].map((x) => [x.k, x]));
 for (const [k, x] of Object.entries(THUOC.items)) BY.set(k, { ...x, k, thuoc: 1 });
 const laThuoc = (it) => !!(it && (BY.get(it.k) || {}).thuoc);
 const HANG = new Set(Object.values(THUOC.shops).flat()); // thuốc bày bán ở cửa hàng
@@ -2191,8 +2193,14 @@ function dungVat(h, it, b, key, qt = false) {
       bot(); h.pd.diem = (h.pd.diem | 0) + D.diem;
       return { msg: `Bạn nhận được ${D.diem} điểm phúc duyên (có ${h.pd.diem})` };
     }
-    case "choHoangKim": { // Hoàng Kim Bảo Hạp / Vé số Hoàng Kim (quà mốc Dã Tẩu 6000 / 7000 / 8000 — anh 31/10 khuya lần 2): giữ lại, mở khi có trang bị Hoàng Kim
-      loi(`${x.n.trim()}: game chưa có trang bị Hoàng Kim — cứ giữ lại, khi game cập nhật trang bị Hoàng Kim sẽ ${D.monPhai ? "đổi được 1 món Hoàng Kim môn phái của phái đang chơi" : "mở ra 1 món ngẫu nhiên bộ An Bang / Định Quốc"}`);
+    case "choHoangKim": { // Hoàng Kim Bảo Hạp (ms:69 -> bộ An Bang / Định Quốc) / Vé số Hoàng Kim (ms:76 -> môn phái, chưa mở)
+      if (it.k !== "ms:69") loi(`${x.n.trim()}: game chưa có trang bị Hoàng Kim môn phái — cứ giữ lại, khi game cập nhật sẽ đổi được 1 món Hoàng Kim môn phái của phái đang chơi`);
+      const m = HK.items[crypto.randomInt(HK.items.length)];
+      const qua = { k: m.k, s: m.s, d: [], m: 1, ...voiKhoa(it.kbh), ...((it.kbh | 0) === KBH_TAM && +it.kbhHet > 0 ? { kbhHet: +it.kbhHet } : {}) };
+      const at = choDau(h.bag, qua);
+      if (!at) loi("Hành trang không đủ chỗ");
+      [qua.x, qua.y] = at; qua.u = ++h.uN; NG.gan(qua, "ruong", x.n.trim(), h.name); h.bag.push(qua); bot();
+      return { msg: `Mở ${x.n.trim()}: nhận được ${m.n.trim()}` };
     }
     case "laHan": { // Thiết La Hán (script\item\tie-luohan.lua): mỗi ngày (giờ Việt Nam) tối đa D.lanNgay quyển + D.knNgay kinh nghiệm; trên cấp D.capToiDa
       // vô hiệu (không mất món). Nhóm cấp (cấp trên 100 tính như 100) -> [kinh nghiệm, %]: ngẫu nhiên 1–100 ≤ % thì đủ, không thì kinh nghiệm × số / 200

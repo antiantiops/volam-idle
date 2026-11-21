@@ -45,14 +45,14 @@ export const ItemDB = {
   load() {
     // vat-pham.json (cong-cu/dung-tap-hoa.js): Thổ Địa Phù + hàng Tạp hóa Ba Lăng (shops[38] = [{ k, gia, s }]); thuốc: shops[39] = [khóa]
     return (this._p = this._p || Promise.all([json(BASE + "items.json"), json("assets/data/do-goc.json"), json("assets/data/attr.json"), json("assets/data/thuoc.json"), json("assets/data/vat-pham.json").catch(() => ({ items: {}, shops: {} })),
-      json("assets/data/ky-tran-cac.json").catch(() => ({ items: {}, the: [], buff: {} }))]).then(([p, g, attr, th, vp, ktc]) => {
-      this.pack = p; this.by = new Map(p.items.map((x) => [x.k, x]));
+      json("assets/data/ky-tran-cac.json").catch(() => ({ items: {}, the: [], buff: {} })), json("src/game/hoang-kim.json")]).then(([p, g, attr, th, vp, ktc, hk]) => {
+      this.pack = p; this.by = new Map([...p.items, ...hk.items].map((x) => [x.k, x]));
       for (const [k, x] of Object.entries(th.items)) this.by.set(k, { ...x, k, thuoc: 1 });
       for (const [k, x] of Object.entries(vp.items)) this.by.set(k, { ...x, k });
       // Kỳ Trân Các (anh 27/10 — cong-cu/dung-ky-tran-cac.js): món (ktc: 1, dung = công dụng | null) + thẻ hàng (Xu) + trạng thái vật phẩm
-      for (const [k, x] of Object.entries(ktc.items)) this.by.set(k, { ...x, k, tuKtc: 1 }); // tuKtc: món của bảng Kỳ Trân Các (cả thuốc trong lễ bao) — windows.js _khongBan
+      for (const [k, x] of Object.entries(ktc.items)) this.by.set(k, { ...x, ...(k === "ms:69" ? { intro: "Mở 1 trong 9 món Hoàng Kim:<enter>An Bang hoặc Định Quốc.<enter>Túi đầy: không mất hộp.", goiY: "Mở ra 1 trong 9 món An Bang hoặc Định Quốc. Hành trang không đủ chỗ thì không mất hộp." } : null), k, tuKtc: 1 }); // tuKtc: món của bảng Kỳ Trân Các (cả thuốc trong lễ bao) — windows.js _khongBan
       this.ktc = { the: ktc.the || [], buff: ktc.buff || {}, bua: ktc.bua || { hieu: {}, mon: {} } };
-      this.goc = g.items; this.serDmg = attr.serDmg || {}; this.shops = { ...th.shops, ...vp.shops };
+      this.goc = { ...g.items, ...hk.base }; this.serDmg = attr.serDmg || {}; this.shops = { ...th.shops, ...vp.shops };
       // cửa hàng phúc duyên (Thần bí Thương Nhân Liễu Ất — Sale 93 của client; giá = điểm phúc duyên — anh 31/10 khuya lần 2): GW.openShop(93, "pd")
       if (ktc.phucDuyen && ktc.phucDuyen.length) this.shops[93] = ktc.phucDuyen.map((o) => ({ k: o.k, gia: o.gia }));
       return p;

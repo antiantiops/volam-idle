@@ -1446,9 +1446,18 @@ function rgNhacVuong() {
 function rgHoangKim() {
   const ds = [...C.N.BY.values()].filter((x) => x.ktc && x.dung && x.dung.loai === "choHoangKim");
   if (!ds.length) return null;
-  const noi = [{ p: "<c>Chưa mở được</c> — game chưa có trang bị Hoàng Kim; cứ giữ lại, khi game cập nhật sẽ dùng được." }];
-  for (const x of ds) noi.push({ h: ten(x.k) }, { p: chuClient(x.goiY || x.intro) || "—" }, khoiNguon(x.k, chuMua(x.k)));
-  return { id: "hoangKim", ten: gopTen(ds.map((x) => ten(x.k))), ...(ds[0].ic ? { ic: ds[0].ic } : {}), tom: "Chưa mở được — chờ trang bị Hoàng Kim", tim: "hoàng kim bảo hạp vé số an bang định quốc", noi };
+  const hk = require("../src/game/hoang-kim.json").items.map((m) => m.n);
+  const noi = [{ p: "Hoàng Kim Bảo Hạp mở ngẫu nhiên 1 trong 9 món An Bang / Định Quốc; các vật phẩm khác vẫn chờ trang bị Hoàng Kim môn phái." }];
+  for (const x of ds) {
+    noi.push({ h: ten(x.k) });
+    if (x.k === "ms:69") {
+      noi.push({ p: "Bấm chuột phải: mở ngẫu nhiên 1 trong 9 món An Bang / Định Quốc, mỗi món cùng tỉ lệ. Không đủ chỗ thì giữ nguyên hộp." }, { ds: hk });
+    } else {
+      noi.push({ p: chuClient(x.goiY || x.intro) || "—" }, { p: "<c>Chưa mở được</c> — chờ cập nhật trang bị Hoàng Kim môn phái." });
+    }
+    noi.push(khoiNguon(x.k, chuMua(x.k)));
+  }
+  return { id: "hoangKim", ten: gopTen(ds.map((x) => ten(x.k))), ...(ds[0].ic ? { ic: ds[0].ic } : {}), tom: "Bảo Hạp mở An Bang / Định Quốc; còn lại chờ Hoàng Kim môn phái", tim: "hoàng kim bảo hạp vé số an bang định quốc", noi };
 }
 
 // =====================================================================================================================
@@ -1553,7 +1562,7 @@ function congDung(k, x) {
       case "hieuUng": if (!x.goiY) L.push("Bấm chuột phải: hiệu ứng quanh mình, người đứng gần cũng thấy."); break;
       case "phiPhong": if (!x.goiY) L.push("Kích hoạt Phi Phong cho y phục đang mặc (mỗi y phục 1 lần, đi theo áo)."); break;
       case "phucDuyen": L.push(`+${so(D.diem)} điểm phúc duyên (phải mở công năng Phúc duyên trước).`); break;
-      case "choHoangKim": L.push("<c>Chưa mở được</c> — game chưa có trang bị Hoàng Kim, cứ giữ lại."); break;
+      case "choHoangKim": L.push(k === "ms:69" ? "Bấm chuột phải: mở ngẫu nhiên 1 trong 9 món An Bang / Định Quốc, mỗi món cùng tỉ lệ. Không đủ chỗ thì giữ nguyên hộp." : "<c>Chưa mở được</c> — game chưa có trang bị Hoàng Kim môn phái, cứ giữ lại."); break;
       case "tuMau": L.push(`+${so(D.ngay)} ngày dùng túi hành trang tử mẫu.`); break;
       case "bch": L.push(`+${so(D.gio)} giờ ủy thác (ủy thác chỉ chạy khi còn giờ).`); break;
       case "kimTe": L.push(`Sửa trang bị đang mặc rồi tới đồ trong túi: mỗi viên ${so(D.ben)} điểm độ bền.`); break;
@@ -1607,7 +1616,7 @@ function tomDung(k, x) {
     case "hieuUng": return D.chieu === 251 ? "Bắn pháo hoa quanh mình" : D.chieu === 285 ? "Mưa hoa hồng quanh mình" : "Hiệu ứng quanh mình";
     case "phiPhong": return "Kích hoạt Phi Phong cho y phục đang mặc";
     case "phucDuyen": return `+${so(D.diem)} điểm phúc duyên`;
-    case "choHoangKim": return "Chưa mở được — chờ trang bị Hoàng Kim";
+    case "choHoangKim": return k === "ms:69" ? "Mở ngẫu nhiên 1 trong 9 món An Bang / Định Quốc" : "Chưa mở được — chờ trang bị Hoàng Kim môn phái";
     case "tuMau": return `+${so(D.ngay)} ngày túi hành trang tử mẫu`;
     case "bch": return `+${so(D.gio)} giờ ủy thác`;
     case "kimTe": return `Sửa trang bị: ${so(D.ben)} điểm độ bền mỗi viên`;
@@ -1635,7 +1644,7 @@ function vatMuc(k) {
   if (!x) return null;
   const noi = [], cd = congDung(k, x), ng = [...(C.NG.get(k) || []), ...(laSach(x) ? C.NG.get("biKip") || [] : [])], mua = muaCua(k), intro = chuClient(x.intro), goiY = chuClient(x.goiY);
   if (intro) noi.push({ p: intro });
-  if (goiY) noi.push({ p: goiY });
+  if (goiY && k !== "ms:69") noi.push({ p: goiY });
   if (cd.length) noi.push({ h: "Công dụng" }, { ds: cd });
   if (ng.length) noi.push({ h: "Có từ" }, { ds: ng.map((o) => o.s) });
   if (mua.length) noi.push({ h: "Mua" }, { ds: mua });
