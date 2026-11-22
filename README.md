@@ -71,6 +71,16 @@ docker compose down
 
 Lệnh này dừng và gỡ container nhưng giữ nguyên dữ liệu trong named volume `game_data`.
 
+## Cổng quản trị ngoài (tùy chọn)
+
+Route `/admin/tao-tai-khoan` mặc định **bị tắt** (fail-closed, trả về HTTP `403`) nếu thiếu cấu hình runtime. Chỉ bật khi chạy sau reverse proxy đã xác thực OAuth/OIDC và gắn secret nội bộ:
+
+- `VL_ADMIN_EMAIL` — email quản trị khớp với trường `email` (`email_verified: true`) trong header `x-userinfo`.
+- `VL_ADMIN_ORIGIN` — origin `https://...` chính xác (không có đường dẫn hay dấu `/` cuối), dùng để kiểm tra header `Origin` ở các yêu cầu `POST`.
+- Secret file `/run/secrets/volam-admin-proxy` — mount qua Docker secret hoặc bind chỉ đọc chứa chuỗi khớp với header `x-volam-admin-proxy`.
+
+`compose.yaml` truyền sẵn hai biến môi trường với mặc định rỗng để chạy cục bộ luôn an toàn. Có thể đặt cấu hình qua `.env` cục bộ hoặc Docker secret mount; tệp `.env` đã nằm trong `.gitignore` — **không bao giờ** commit cấu hình thật hay secret vào repository.
+
 ## Tùy chỉnh gameplay
 
 Một số tệp chính liên quan tới gameplay và cấu hình cục bộ:

@@ -4,7 +4,7 @@ WORKDIR /app
 
 RUN mkdir -p /data && chown -R node:node /data
 
-COPY --chown=node:node game.html chay-game.js quan-tri.js cau-hinh.json ./
+COPY --chown=node:node game.html chay-game.js quan-tri.js volam-admin-account.cjs cau-hinh.json ./
 COPY --chown=node:node src ./src
 COPY --chown=node:node may-chu ./may-chu
 

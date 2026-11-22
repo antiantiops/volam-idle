@@ -5,6 +5,8 @@ services:
       - "127.0.0.1:8101:8101"
     environment:
       VL_DU_LIEU: /data
+      VL_ADMIN_EMAIL: ${VL_ADMIN_EMAIL:-}
+      VL_ADMIN_ORIGIN: ${VL_ADMIN_ORIGIN:-}
     volumes:
       - type: volume
         source: game_data

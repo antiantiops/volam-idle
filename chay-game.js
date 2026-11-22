@@ -27,6 +27,7 @@ function xuLy(req, res) {
   // đường dẫn lạ (rà soát lượt 61): ký tự NUL ("/src/%00" — fs.stat ném lỗi = SẬP máy chủ), gạch ngược, hoặc không chuẩn sau khi giải mã ("%2f..%2f",
   // "//", "/./" — lách khóa tài nguyên rồi tep.js chuẩn hóa ra tệp khác) -> 400. Trình duyệt thật không gửi kiểu này
   if (p.includes("\0") || p.includes("\\") || p !== path.posix.normalize(p)) { res.writeHead(400); return res.end(); }
+  if (p === "/admin/tao-tai-khoan") return require("./volam-admin-account.cjs")(req, res).catch(() => tra500(res));
   try {
     // chống sao chép (anh 10/11 — may-chu/chong-sao-chep.js): trang tên miền khác lấy hình / mã / API, nhúng game vào khung -> 403
     if (CSC.chan(req, p)) { res.writeHead(403, { "Content-Type": "text/plain; charset=utf-8" }); return res.end("403"); }
