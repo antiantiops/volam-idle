@@ -29,7 +29,7 @@
 import { ldist } from "./map.js";
 import { dirOf } from "../dir.js";
 import * as R from "./rules.js";
-import { ItemDB, looksOf, equipStats, isPotion, weaponKind, laBuffTk, laHoan } from "./itemdb.js";
+import { ItemDB, looksOf, equipStats, isPotion, weaponKind, laBuffTk, laHoan, boDinhNghiep } from "./itemdb.js";
 import { installVoCong, skillB, mergeB, skillSupport, kindOf, auraGhep, addAttrs, vongGiu, KC_ID, KC_PHI, BUA_VUNG_AI } from "./vocong.js";
 import { mocNhanTrung, hoiCoc, HOI_COC } from "./mocnhan.js";
 import { nhatMon, BOSS_TAM, laBoss } from "./auto.js";
@@ -1718,6 +1718,33 @@ export class World {
     // ẩn thân (Ngự Tuyết Ẩn): mình thấy mờ, quái không thấy — độ mờ truyền vào jx.draw (hàm này tự đặt globalAlpha, đặt ngoài bị đè:
     // anh 26/10 "ẩn thân nhưng hình không mờ")
     const hid = other ? p.kind === "other" && !!p.an : p.hideUntil > this.time || (p === this.player && !!(this.tk && this.tk.xem)); // người khác đang ẩn thân: chỉ đồng đội còn thấy (mờ); lôi đài: mình là người xem (loidai.js — anh 15/11) cũng vẽ mờ
+    // hào quang bộ Định Nghiệp (đủ 6 món khác nhau, còn độ bền) quanh chân nhân vật mình khi không ẩn thân
+    if (!other && p === this.player && !hid && this.duBoDinhNghiep()) {
+      const t = this.time || 0, pulse = 0.5 + 0.5 * Math.sin(t * 4);
+      ctx.save();
+      ctx.strokeStyle = `rgba(255,190,64,${(0.22 + 0.18 * pulse).toFixed(3)})`;
+      ctx.lineWidth = 4.5 + 1.5 * pulse;
+      ctx.beginPath();
+      ctx.ellipse(p.x, p.y, 29 + 1.2 * pulse, 14.5 + 0.6 * pulse, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.strokeStyle = `rgba(255,212,92,${(0.72 + 0.22 * pulse).toFixed(3)})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.ellipse(p.x, p.y, 25.6 + 0.8 * pulse, 12.8 + 0.4 * pulse, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      for (let i = 0; i < 6; i++) {
+        const u = (((t * 0.75 + (i + 0.5) / 6) % 1) + 1) % 1;
+        const ang = i * 1.0472 + 0.35;
+        const px = p.x + Math.cos(ang) * 21 + Math.sin(u * Math.PI * 2 + i) * 2;
+        const py = p.y + Math.sin(ang) * 8 - u * 40;
+        const a = Math.sin(u * Math.PI) * 0.85;
+        ctx.fillStyle = `rgba(255,224,116,${a.toFixed(3)})`;
+        ctx.beginPath();
+        ctx.arc(px, py, 1.3 + 0.9 * (1 - u), 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
     // bị quái có võ công làm chậm / choáng / trúng độc: nhuộm màu như quái (mobTint)
     // nhuộm bằng bản tô màu giữ sẵn (loc — spr.js anhLoc), không đặt ctx.filter mỗi khung (anh 06/11: "bị làm chậm mà chạy thì fps tụt không phanh")
     const nTT = other && !p.tkb ? this.nguoiTT(p) : null; // người khác vừa bị mình đánh trúng độc / chậm / choáng (anh 17/11 — nguoiTT)
@@ -1725,6 +1752,9 @@ export class World {
     let r = jx.draw(ctx, p.look, { act: A, dir: p.dir, t: sw ? p.t % p.swing : p.t, duration: sw ? p.swing : dur, x: p.x, y: p.y - kcZ, alpha: hid ? HIDE_ALPHA : 1, ...(tint ? { loc: tint } : {}) });
     if (!r && kcN) r = jx.draw(ctx, p.look, { act: fight ? "FightRun" : "NormalRun", dir: p.dir, t: p.t, duration: DUR.run, x: p.x, y: p.y - kcZ, alpha: hid ? HIDE_ALPHA : 1, shadow: false }); // hình nhảy đang tải: tạm hình chạy, không biến mất
     p.top = p.y - kcZ + (r ? Math.max(-150, r.top) : -90);
+  }
+  duBoDinhNghiep() {
+    return boDinhNghiep(this.hero).size === 6;
   }
   drawHeroLabel(ctx, p) {
     // F7 (client showplayername): tên; F8 (showplayerlife): thanh máu dưới tên như client. Người khác: không có thanh máu
@@ -1921,7 +1951,7 @@ export class World {
     const eq = equipStats(this.hero, this.riding()), db = this.P.skillDb, au = this.hero.oChieu && this.hero.oChieu.phai;
     this.vongDoiDs = this.vongDoi(); const vm = this.vongMinh(), TD = this.tangIchDoi(); // vm: vòng của mình còn tác dụng (vừa đổi / xoay); TD: tăng ích tổ đội
     this._vdKey = khoaVong([...this.vongDoiDs, ...vm]) + "|" + TD.toc + "/" + TD.hoi;
-    const B = !db || !this.P.vc || !this.vcOpen ? eq : mergeB(eq, skillB(this.hero, db, this.wk, buffs, au && db[au] && db[au].aura ? au : null, [...this.vongDoiDs, ...vm]));
+    const B = !db || !this.P.vc || !this.vcOpen ? eq : mergeB(eq, skillB(this.hero, db, this.wk, buffs, au && db[au] && db[au].aura ? au : null, [...this.vongDoiDs, ...vm], eq));
     // Tống Kim (anh 06/11 — đặc tả đợt 2): trạng thái vật phẩm Tống Kim (khóa tk… — hoàn 3 phút) chỉ có tác dụng trong trận (this.tk), ngoài trận bỏ qua
     // Lôi Đài Công Bình Tử (anh 17/11 "các hiệu ứng có trước từ ngoài sẽ không có tác dụng, tự động mất hiệu lực — rời khỏi công bình tử sẽ tiếp tục có tác dụng"): trong sân
     // (World.tk của lôi đài — loidai.js, loai "ld") mọi trạng thái vật phẩm (hoàn, Bách Quả Lộ, bùa Phong Hỏa…) không cộng; máy chủ dừng giờ (may-chu/do.js buffDem)
@@ -2070,6 +2100,10 @@ export class World {
   // quái đánh trúng mình: giảm theo "Giảm sát thương đến từ hệ X", bùa giảm sát thương trên quái, triệt tiêu điểm; nội lực hộ thân gánh
   // phần % (còn nội lực)
   guard(m, p, d) {
+    if (p.blockRate > 0 && Math.random() * 100 < Math.min(100, p.blockRate)) {
+      d.miss = true; d.v = 0;
+      return;
+    }
     let v = d.v * (1 - (p.fromSeries[m.series] || 0) / 100) * (1 + (this.P.vc ? this.mobMod(m, "addphysicsdamage_p") : 0) / 100) - (p.sorb || 0);
     v = Math.max(1, Math.floor(v));
     // Nội lực hộ thân % (Tọa Vọng Vô Ngã — anh 14/11 chốt công thức): tỷ lệ tổng = kỹ năng + bị động + trang bị (rules.js manaShield — giữ tổng, không chặn);

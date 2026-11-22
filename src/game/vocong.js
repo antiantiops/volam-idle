@@ -29,7 +29,8 @@ import { ldist } from "./map.js";
 import { dirOf } from "../dir.js";
 import { openSpr } from "../jx/spr.js";
 import { laBoss as laBossVc } from "./auto.js"; // đánh boss phải ở gần (anh 16/11 — bùa hại lên boss: misHit)
-import { hitPercent, atkFrames, LUYEN, mobDamageHe, khangThat, ccCong, capCong, skCong, ccTrang } from "./rules.js"; // ccCong / capCong / skCong / ccTrang: +cấp kỹ năng Báo Đáp Ân Sư (anh 16/11)
+import { hitPercent, atkFrames, LUYEN, mobDamageHe, khangThat, ccCong, capChieuTrangBi, skCong, ccTrang } from "./rules.js"; // ccCong / capChieuTrangBi / skCong / ccTrang: +cấp kỹ năng Báo Đáp Ân Sư & trang bị (anh 16/11)
+import { equipStats } from "./itemdb.js";
 
 const BASE = "assets/web/vocong/";
 const TICK = 1 / 18, SCALE = 0.75;
@@ -339,7 +340,7 @@ export function addAttrs(B, attrs, hoan = false) {
 export const emptyB = () => ({ str: 0, dex: 0, vit: 0, eng: 0, life: 0, mana: 0, stamina: 0, res: {}, resAll: 0, resMax: {}, wdmg: null, dmgAdd: 0, dmgPct: 0,
   elem: {}, elemMagic: {}, hoanElem: {}, hoanMagic: {}, enh: {}, atkSpeed: 0, castSpeed: 0, moveSpeed: 0, ar: 0, arPct: 0, def: 0, lifeRegen: 0, manaRegen: 0, lifeSteal: 0, manaSteal: 0,
   thorns: 0, thornsPct: 0, rangeReturnPct: 0, poisonRetPct: 0, phanBua: 0, lifeRegenPct: 0, luck: 0, ignoreDef: 0, crit: 0, lifePct: 0, manaPct: 0, manaShield: 0, noiHoThan: 0, sorb: 0, vsSeries: {}, fromSeries: {},
-  tgph: 0, tglc: 0, tgc: 0, tgtd: 0, boQuaDoc: 0 });
+  tgph: 0, tglc: 0, tgc: 0, tgtd: 0, boQuaDoc: 0, allSkill: 0, skillAdd: Object.create(null) });
 export function mergeB(a, b) {
   const o = emptyB();
   for (const src of [a, b]) for (const [k, v] of Object.entries(src || {})) {
@@ -362,8 +363,8 @@ const NOT_STAT = /^(skill_|missle_|addskill|autoattackskill|autoreplyskill|autor
 export const statsOnly = (A) => Object.fromEntries(Object.entries(A).filter(([k]) => !NOT_STAT.test(k) && !DMG.test(k) && k !== "seriesdamage_p" && k !== "stun_p" && k !== "deadlystrike_p" && k !== "attackrating_p"));
 // ngoai = vòng sáng hỗ trợ của đồng đội đứng trong tầm [[mã, cấp, …]] (anh 29/10 — World.vongDoi)
 // anh 16/11 — Báo Đáp Ân Sư: cấp chiêu = cấp đã học + cấp Nhất Kỷ / Càn khôn đang có (rules.js skCong — không ghi vào hero.skills)
-export function skillB(hero, db, wk, buffs, auraId, ngoai) {
-  const B = emptyB(), sk = skCong(hero, db);
+export function skillB(hero, db, wk, buffs, auraId, ngoai, eq) {
+  const B = emptyB(), sk = skCong(hero, db, undefined, eq);
   for (const [id, lv] of Object.entries(sk)) { const s = db[id]; if (s && lv > 0 && s.style === 3 && !timedBuff(s) && eqtOk(s, wk)) addAttrs(B, statsOnly(lvAttrs(s, lv))); }
   for (const b of (buffs || new Map()).values()) addAttrs(B, b.attrs);
   const a = auraId && db[auraId], alv = auraId ? sk[auraId] | 0 : 0;
@@ -404,12 +405,14 @@ export function skillSupport(hero, db) {
 // ---------- trận: cài vào World ----------
 export function installVoCong(World) {
   Object.assign(World.prototype, {
-    // cấp đang học của chiêu id (0 = chưa học); anh 16/11 — Báo Đáp Ân Sư: + cấp Nhất Kỷ / Càn khôn còn hạn (rules.js ccCong / capCong — chiêu đã học, trừ
-    // đòn thường / Khinh công, kẹp theo dữ liệu chiêu). Cấp gốc (cộng điểm, chiêu luyện): this.hero.skills
+    // cấp đang học của chiêu id (0 = chưa học); anh 16/11 — Báo Đáp Ân Sư + cấp kỹ năng từ trang bị (rules.js ccCong / capChieuTrangBi — chiêu đã học,
+    // trừ đòn thường / Khinh công, kẹp theo dữ liệu chiêu). Cấp gốc (cộng điểm, chiêu luyện): this.hero.skills
     skLv(id) {
       if (id === KC_ID) return this.hero.fac != null ? 1 : 0;
-      const lv = ((this.hero.skills || {})[id]) | 0, c = lv > 0 ? ccCong(this.hero) : 0;
-      return c ? capCong(this.skDef(id), id, lv, c) : lv;
+      const lv = ((this.hero.skills || {})[id]) | 0;
+      if (lv < 1) return 0;
+      const eq = equipStats(this.hero, this.riding()), c = ccCong(this.hero);
+      return capChieuTrangBi(this.skDef(id), id, lv, c, eq);
     },
     skDef(id) { return (this.P.skillDb || {})[id] || null; },
     // tầm ra chiêu (px logic): skill_attackradius theo cấp, không có thì AttackRadius
@@ -1108,7 +1111,7 @@ export function installVoCong(World) {
         lv = k.kidLv > 0 ? k.kidLv : lv; s = this.skDef(k.kid);
       }
       if (!s) return [0, 0];
-      const A = lvAttrs(s, lv), e = A.physicsenhance_p ? 1 + A.physicsenhance_p[0] / 100 : 0, sup = 1 + ((this.vcSupport && this.vcSupport[id]) || 0) / 100;
+      const A = lvAttrs(s, lv), e = A.physicsenhance_p ? 1 + A.physicsenhance_p[0] / 100 : 0, sup = 1 + (((this.vcSupport && this.vcSupport[id]) || 0) + ((p && p.skillEnhance) || 0)) / 100;
       let lo = p.dmg[0] * e, hi = p.dmg[1] * e;
       if (A.physicsdamage_v) { lo += A.physicsdamage_v[0]; hi += A.physicsdamage_v[2] || A.physicsdamage_v[0]; }
       if (!s.phys && (A.physicsenhance_p || A.physicsdamage_v)) { const vn = ((p.elemMagic && p.elemMagic.physics) || 0) + ((p.hoanMagic && p.hoanMagic.physics) || 0); lo += vn; hi += vn; } // vật lý nội công của đồ + hoàn (skDamage)
@@ -1125,15 +1128,16 @@ export function installVoCong(World) {
     // nhắm đúng đòn con theo sự kiện (vd Thiên Cương Địa Sát -> Thiên Cương Độc Thủ, đòn nổ của Âm Phong Thực Cốt). Dòng ghi trùng số cho chiêu gốc (Kinh Lôi Trảm -> 322 và
     // 326) đã tính trong phần chiêu gốc; đòn ChildSkillId nhận thẳng phần chiêu gốc như engine (KNpc.cpp pChildSkill->m_nEnChance)
     supDon(src) {
-      const S = this.vcSupport; if (!S) return 0;
-      const goc = S[src.root] || 0; if (src.id === src.root || !S.dong) return goc;
+      const enh = (this.player && this.player.skillEnhance) || 0;
+      const S = this.vcSupport; if (!S) return enh;
+      const goc = S[src.root] || 0; if (src.id === src.root || !S.dong) return goc + enh;
       const k = src.root + "|" + src.id; let r = S.nho.get(k);
       if (r === undefined) {
         const rs = this.skDef(src.root), cua = S.dong[src.root] || [];
         r = rs && rs.sub && +rs.sub.child === +src.id ? 0 : (S.dong[src.id] || []).reduce((t, [sid, p]) => t + (cua.some(([s2, p2]) => s2 === sid && p2 === p) ? 0 : p), 0);
         S.nho.set(k, r);
       }
-      return goc + r;
+      return goc + r + enh;
     },
     serK(s, A, src, e) {
       const p = this.player, rs = this.skDef(src.root), rA = src.root !== src.id ? lvAttrs(rs, this.skLv(src.root) || src.lv) : A;

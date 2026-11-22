@@ -2,7 +2,9 @@
   "source": {
     "table": "client/settings/item/goldequip.txt",
     "revision": "9c65c6547fe572e0b09227a0b083f42509bedcae",
-    "note": "community reference, not official VNG"
+    "note": "community reference, not official VNG; Định Nghiệp fixed gold attributes are Idle design (goldequip L148-153 had blank magic indices)",
+    "ordinaryGold": "1ClickVMFull QSRpec60 ver5 server1/settings/item/004 goldequip (sha256:d5f78c6f5947fdc4285ce6763189dab53836ebd6c5678c65be9d0527d905fbed) + magicattrib_ge (sha256:bbd74da3a2b6a30fea37f9842f9e12013ac5c67c30f7be13ebb0ddfbe719d608), 0-based idx (line idx+1), corroborated hudy9x data.js ge 550; no set metadata/hidden bonus (ext columns blank, normal suite absent for IDs 33/34)",
+    "docCoCauBai": "1ClickVMFull QSRpec60 ver5 server1/settings/item/004 goldequip.txt (sha256:d5f78c6f5947fdc4285ce6763189dab53836ebd6c5678c65be9d0527d905fbed, L4135 hk:4135 sid=1, L4136 hk:4136 sid=2) + magicattrib_ge.txt (sha256:bbd74da3a2b6a30fea37f9842f9e12013ac5c67c30f7be13ebb0ddfbe719d608) + suite_activate_count.txt (sha256:b1195c6b62c534479f3cb406daa38d2130f39939262886d2b2e2b2848a751e1e) + ext_suite_activate_count.txt (sha256:003f3c2276502820af71c3d1176837db0401a8c7416c3e1109486707f332e4bd); normal_group 345 threshold 2 recorded as provenance only (no separate normal set effect); col37=39 col38=9 preserved as provenance only (Idle ignores sect equip requirement per may-chu/do.js:1397); fixed gold & extGold per current Idle engine (targeted allskill_v 1283/1284 apply if learned in skillDb, no source-parity claim for unavailable skills)"
   },
   "items": [
     {
@@ -78,6 +80,8 @@
       "x": -1,
       "sv": 7,
       "gr": "hkdb",
+      "g": "armor",
+      "id": 11,
       "c": [
         2,
         3
@@ -94,6 +98,8 @@
       "x": -1,
       "sv": 7,
       "gr": "hkdb",
+      "g": "helm",
+      "id": 12,
       "c": [
         2,
         2
@@ -148,6 +154,156 @@
       ],
       "ic": "item/equip/sash/obj-sash17.png",
       "ln": "Trang bị Hoàng Kim"
+    },
+    {
+      "k": "hk:148",
+      "n": "Định Nghiệp Đầu quán",
+      "t": 7,
+      "p": 0,
+      "s": 0,
+      "x": -1,
+      "sv": 7,
+      "gr": "hkdb",
+      "g": "helm",
+      "id": 20,
+      "c": [
+        2,
+        2
+      ],
+      "ic": "item/equip/cap/obj-ma-cap20-3.png",
+      "ln": "Trang bị Hoàng Kim",
+      "bo": "dinhNghiep"
+    },
+    {
+      "k": "hk:149",
+      "n": "Định Nghiệp Chiến bào",
+      "t": 2,
+      "p": 0,
+      "s": 4,
+      "x": -1,
+      "sv": 7,
+      "gr": "hkdb",
+      "g": "armor",
+      "id": 20,
+      "c": [
+        2,
+        3
+      ],
+      "ic": "item/equip/armor/obj-ma-cloth20-3.png",
+      "ln": "Trang bị Hoàng Kim",
+      "bo": "dinhNghiep"
+    },
+    {
+      "k": "hk:150",
+      "n": "Định Nghiệp Yêu đái",
+      "t": 6,
+      "p": 0,
+      "s": 3,
+      "x": -1,
+      "sv": 7,
+      "gr": "hkdb",
+      "c": [
+        2,
+        1
+      ],
+      "ic": "item/equip/sash/obj-sash20.png",
+      "ln": "Trang bị Hoàng Kim",
+      "bo": "dinhNghiep"
+    },
+    {
+      "k": "hk:151",
+      "n": "Định Nghiệp Hộ uyển",
+      "t": 8,
+      "p": 0,
+      "s": 1,
+      "x": -1,
+      "sv": 7,
+      "gr": "hkdb",
+      "c": [
+        1,
+        2
+      ],
+      "ic": "item/equip/bangle/obj-bangle20.png",
+      "ln": "Trang bị Hoàng Kim",
+      "bo": "dinhNghiep"
+    },
+    {
+      "k": "hk:152",
+      "n": "Định Nghiệp Chiến ngoa",
+      "t": 5,
+      "p": 0,
+      "s": 2,
+      "x": -1,
+      "sv": 7,
+      "gr": "hkdb",
+      "c": [
+        2,
+        2
+      ],
+      "ic": "item/equip/boots/obj-shoes10.png",
+      "ln": "Trang bị Hoàng Kim",
+      "bo": "dinhNghiep"
+    },
+    {
+      "k": "hk:153",
+      "n": "Định Nghiệp Ban chỉ",
+      "t": 3,
+      "p": 0,
+      "s": 2,
+      "x": -1,
+      "sv": 7,
+      "gr": "hkdb",
+      "c": [
+        1,
+        1
+      ],
+      "ic": "item/equip/ring/obj-ring08.png",
+      "ln": "Trang bị Hoàng Kim",
+      "bo": "dinhNghiep"
+    },
+    {
+      "k": "hk:4135",
+      "n": "Độc Cô Cầu Bại Thượng Giới",
+      "t": 3,
+      "p": 0,
+      "s": 0,
+      "x": -1,
+      "sv": 7,
+      "gr": "hkdb",
+      "c": [
+        1,
+        1
+      ],
+      "ic": "item/equip/ring/obj-ring09.png",
+      "ln": "Trang bị Hoàng Kim",
+      "bo": "docCoCauBai",
+      "extGroup": 361,
+      "extThresholds": [
+        2,
+        2
+      ]
+    },
+    {
+      "k": "hk:4136",
+      "n": "Độc Cô Cầu Bại Hạ Giới",
+      "t": 3,
+      "p": 0,
+      "s": 1,
+      "x": -1,
+      "sv": 7,
+      "gr": "hkdb",
+      "c": [
+        1,
+        1
+      ],
+      "ic": "item/equip/ring/obj-ring10.png",
+      "ln": "Trang bị Hoàng Kim",
+      "bo": "docCoCauBai",
+      "extGroup": 361,
+      "extThresholds": [
+        2,
+        2
+      ]
     }
   ],
   "base": {
@@ -161,6 +317,12 @@
           "requirelevel",
           85
         ]
+      ],
+      "gold": [
+        [
+          "allres_p",
+          10
+        ]
       ]
     },
     "hk:218": {
@@ -172,6 +334,16 @@
         [
           "requirelevel",
           80
+        ]
+      ],
+      "gold": [
+        [
+          "manamax_v",
+          60
+        ],
+        [
+          "coldres_p",
+          20
         ]
       ]
     },
@@ -185,6 +357,16 @@
           "requirelevel",
           75
         ]
+      ],
+      "gold": [
+        [
+          "manamax_v",
+          60
+        ],
+        [
+          "poisonres_p",
+          20
+        ]
       ]
     },
     "hk:220": {
@@ -196,6 +378,16 @@
         [
           "requirelevel",
           80
+        ]
+      ],
+      "gold": [
+        [
+          "manamax_v",
+          60
+        ],
+        [
+          "fireres_p",
+          20
         ]
       ]
     },
@@ -219,6 +411,16 @@
           "requirelevel",
           85
         ]
+      ],
+      "gold": [
+        [
+          "fasthitrecover_v",
+          30
+        ],
+        [
+          "lifemax_v",
+          60
+        ]
       ]
     },
     "hk:400": {
@@ -240,6 +442,16 @@
         [
           "requirelevel",
           75
+        ]
+      ],
+      "gold": [
+        [
+          "lifemax_v",
+          -49
+        ],
+        [
+          "physicsres_p",
+          20
         ]
       ]
     },
@@ -263,6 +475,16 @@
           "requirelevel",
           80
         ]
+      ],
+      "gold": [
+        [
+          "fastwalkrun_p",
+          30
+        ],
+        [
+          "lifemax_v",
+          60
+        ]
       ]
     },
     "hk:402": {
@@ -285,6 +507,16 @@
           "requirelevel",
           75
         ]
+      ],
+      "gold": [
+        [
+          "lifemax_v",
+          -49
+        ],
+        [
+          "freezetimereduce_p",
+          30
+        ]
       ]
     },
     "hk:403": {
@@ -306,6 +538,295 @@
         [
           "requirelevel",
           75
+        ]
+      ],
+      "gold": [
+        [
+          "lifemax_v",
+          -49
+        ],
+        [
+          "poisontimereduce_p",
+          40
+        ]
+      ]
+    },
+    "hk:148": {
+      "cl": 10,
+      "lv": 90,
+      "series": 0,
+      "base": [
+        [
+          "armordefense_v",
+          310
+        ],
+        [
+          "durability_v",
+          60
+        ]
+      ],
+      "def": 310,
+      "req": [
+        [
+          "requirelevel",
+          90
+        ]
+      ],
+      "gold": [
+        [
+          "lifemax_v",
+          60
+        ],
+        [
+          "lightingres_p",
+          5
+        ]
+      ]
+    },
+    "hk:149": {
+      "cl": 10,
+      "lv": 90,
+      "series": 4,
+      "base": [
+        [
+          "armordefense_v",
+          630
+        ],
+        [
+          "durability_v",
+          60
+        ]
+      ],
+      "def": 630,
+      "req": [
+        [
+          "requirelevel",
+          90
+        ]
+      ],
+      "gold": [
+        [
+          "lifemax_v",
+          100
+        ],
+        [
+          "physicsres_p",
+          5
+        ]
+      ]
+    },
+    "hk:150": {
+      "cl": 10,
+      "lv": 90,
+      "series": 3,
+      "base": [
+        [
+          "armordefense_v",
+          140
+        ],
+        [
+          "durability_v",
+          60
+        ]
+      ],
+      "def": 140,
+      "req": [
+        [
+          "requirelevel",
+          90
+        ]
+      ],
+      "gold": [
+        [
+          "manamax_v",
+          50
+        ],
+        [
+          "coldres_p",
+          5
+        ]
+      ]
+    },
+    "hk:151": {
+      "cl": 10,
+      "lv": 90,
+      "series": 1,
+      "base": [
+        [
+          "armordefense_v",
+          115
+        ],
+        [
+          "durability_v",
+          60
+        ]
+      ],
+      "def": 115,
+      "req": [
+        [
+          "requirelevel",
+          90
+        ]
+      ],
+      "gold": [
+        [
+          "lifemax_v",
+          40
+        ],
+        [
+          "fireres_p",
+          5
+        ]
+      ]
+    },
+    "hk:152": {
+      "cl": 10,
+      "lv": 90,
+      "series": 2,
+      "base": [
+        [
+          "armordefense_v",
+          140
+        ],
+        [
+          "durability_v",
+          60
+        ]
+      ],
+      "def": 140,
+      "req": [
+        [
+          "requirelevel",
+          90
+        ]
+      ],
+      "gold": [
+        [
+          "fastwalkrun_p",
+          10
+        ],
+        [
+          "poisonres_p",
+          5
+        ]
+      ]
+    },
+    "hk:153": {
+      "cl": 10,
+      "lv": 90,
+      "series": 2,
+      "base": [
+        [
+          "durability_v",
+          60
+        ]
+      ],
+      "req": [
+        [
+          "requirelevel",
+          90
+        ]
+      ],
+      "gold": [
+        [
+          "lifemax_v",
+          50
+        ],
+        [
+          "manamax_v",
+          50
+        ]
+      ]
+    },
+    "hk:4135": {
+      "cl": 10,
+      "lv": 150,
+      "series": 0,
+      "base": [],
+      "req": [
+        [
+          "requirelevel",
+          150
+        ]
+      ],
+      "gold": [
+        [
+          "lifemax_yan_v",
+          999
+        ],
+        [
+          "lightingres_yan_p",
+          65
+        ],
+        [
+          "manamax_yan_v",
+          999
+        ],
+        [
+          "sorbdamage_yan_p",
+          80
+        ],
+        [
+          "skill_enhance",
+          80
+        ],
+        [
+          "allskill_v",
+          1,
+          1283
+        ]
+      ],
+      "extGold": [
+        [
+          "allskill_v",
+          2,
+          0
+        ]
+      ]
+    },
+    "hk:4136": {
+      "cl": 10,
+      "lv": 150,
+      "series": 1,
+      "base": [],
+      "req": [
+        [
+          "requirelevel",
+          150
+        ]
+      ],
+      "gold": [
+        [
+          "lifemax_yan_v",
+          999
+        ],
+        [
+          "physicsres_yan_p",
+          65
+        ],
+        [
+          "manamax_yan_v",
+          999
+        ],
+        [
+          "stuntimereduce_p",
+          80
+        ],
+        [
+          "block_rate",
+          5
+        ],
+        [
+          "allskill_v",
+          1,
+          1284
+        ]
+      ],
+      "extGold": [
+        [
+          "allskill_v",
+          2,
+          0
         ]
       ]
     }

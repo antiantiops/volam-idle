@@ -59,6 +59,11 @@ const doc = (f) => JSON.parse(fs.readFileSync(path.join(ROOT, f), "utf8"));
 const PACK = doc("assets/web/item/items.json"), GOC = doc("assets/data/do-goc.json").items, DX = doc("assets/data/dong-xanh.json");
 const HK = doc("src/game/hoang-kim.json");
 Object.assign(GOC, HK.base);
+const HK_BAO = ["hk:217", "hk:218", "hk:219", "hk:220", "hk:399", "hk:400", "hk:401", "hk:402", "hk:403"].map((k) => { // ms:69 cố định 9 món An Bang / Định Quốc
+  const m = HK.items.find((x) => x.k === k);
+  if (!m) throw new Error(`HK_BAO missing item: ${k}`);
+  return m;
+});
 const NKD = () => require("./nhat-ky"); // sổ hoạt động từng tài khoản (nạp lúc dùng)
 const NG = require("./nguon-mon"); // nguồn gốc món: mã riêng + nơi sinh ra + đường đi (anh 18/11 tối — may-chu/nguon-mon.js)
 const CHR = doc("assets/data/char.json"), MS = doc("assets/data/mobstats.json"), CFG = require("./cau-hinh-qt").apDung(doc("cau-hinh.json")); // + phần quản trị sửa ở F10 → Cấu hình (du-lieu/cau-hinh-qt.json — anh 11/11)
@@ -2195,7 +2200,7 @@ function dungVat(h, it, b, key, qt = false) {
     }
     case "choHoangKim": { // Hoàng Kim Bảo Hạp (ms:69 -> bộ An Bang / Định Quốc) / Vé số Hoàng Kim (ms:76 -> môn phái, chưa mở)
       if (it.k !== "ms:69") loi(`${x.n.trim()}: game chưa có trang bị Hoàng Kim môn phái — cứ giữ lại, khi game cập nhật sẽ đổi được 1 món Hoàng Kim môn phái của phái đang chơi`);
-      const m = HK.items[crypto.randomInt(HK.items.length)];
+      const m = HK_BAO[crypto.randomInt(HK_BAO.length)];
       const qua = { k: m.k, s: m.s, d: [], m: 1, ...voiKhoa(it.kbh), ...((it.kbh | 0) === KBH_TAM && +it.kbhHet > 0 ? { kbhHet: +it.kbhHet } : {}) };
       const at = choDau(h.bag, qua);
       if (!at) loi("Hành trang không đủ chỗ");

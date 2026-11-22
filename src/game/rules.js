@@ -153,10 +153,31 @@ export function capCong(s, id, lv, cong) {
   lv = lv | 0; if (!(cong > 0) || lv < 1 || CC_TRU.has(+id)) return lv;
   const n = soCapCo(s); return n > lv ? Math.min(lv + cong, n) : lv;
 }
+// cấp dùng của chiêu id đã học lv khi cộng cong (Báo Đáp Ân Sư) và chỉ số trang bị eq ({ allSkill, skillAdd })
+export function capChieuTrangBi(s, id, lv, cong, eq) {
+  lv = lv | 0;
+  const eqCong = eq ? ((eq.allSkill | 0) + ((eq.skillAdd && eq.skillAdd[+id]) | 0)) : 0;
+  if (!eqCong) return capCong(s, id, lv, cong);
+  if (lv < 1 || CC_TRU.has(+id)) return lv;
+  const n = soCapCo(s), raw = lv + (cong > 0 ? +cong : 0) + eqCong;
+  return clamp(raw, 1, Math.max(lv, n));
+}
+const hasEqSkill = (eq) => {
+  if (!eq || typeof eq !== "object") return false;
+  if (eq.allSkill | 0) return true;
+  const add = eq.skillAdd;
+  if (!add || typeof add !== "object") return false;
+  for (const k in add) if (Object.prototype.hasOwnProperty.call(add, k) && (add[k] | 0)) return true;
+  return false;
+};
 // bản xem { mã: cấp dùng } của hero.skills (không cộng thì trả chính hero.skills — không tạo đối tượng mới)
-export function skCong(hero, db, cong = ccCong(hero)) {
-  const sk = (hero && hero.skills) || {}; if (!(cong > 0)) return sk;
-  const o = {}; for (const [id, lv] of Object.entries(sk)) o[id] = capCong(db && db[id], id, lv, cong);
+export function skCong(hero, db, cong = ccCong(hero), eq) {
+  const sk = (hero && hero.skills) || {};
+  const hasEq = hasEqSkill(eq);
+  if (!(cong > 0) && !hasEq) return sk;
+  const o = {};
+  if (hasEq) for (const [id, lv] of Object.entries(sk)) o[id] = capChieuTrangBi(db && db[id], id, lv, cong, eq);
+  else for (const [id, lv] of Object.entries(sk)) o[id] = capCong(db && db[id], id, lv, cong);
   return o;
 }
 // chiêu đang cao hơn mức đó (nhân vật cộng điểm trước 29/10, công cụ thử hạ cấp) -> hạ về đúng mức; điểm thừa trả lại ở fixPoints. Trả
@@ -199,7 +220,7 @@ export function heroStats(hero, chr, B = NO_BONUS) {
     elem: { ...B.elem }, atkSpeed: B.atkSpeed, moveSpeed: B.moveSpeed, lifeRegen: B.lifeRegen, lifeSteal: B.lifeSteal, thorns: B.thorns, luck: B.luck,
     ignoreDef: Math.min(100, B.ignoreDef),
     elemMagic: { ...(B.elemMagic || {}) }, hoanElem: { ...(B.hoanElem || {}) }, hoanMagic: { ...(B.hoanMagic || {}) }, enh: { ...(B.enh || {}) }, castSpeed: B.castSpeed || 0, crit: B.crit || 0, manaRegen: B.manaRegen || 0, manaSteal: B.manaSteal || 0,
-    thornsPct: B.thornsPct || 0, rangeReturnPct: B.rangeReturnPct || 0, poisonRetPct: B.poisonRetPct || 0, phanBua: B.phanBua || 0, lifeRegenPct: B.lifeRegenPct || 0, manaShield: B.manaShield || 0 /* tổng kỹ năng + trang bị (hiện được quá 100) — world.js guard chặn hiệu lực ≤ 99 % (anh 14/11) */, noiHoThan: B.noiHoThan || 0, sorb: B.sorb || 0, vsSeries: { ...(B.vsSeries || {}) }, fromSeries: { ...(B.fromSeries || {}) },
+    thornsPct: B.thornsPct || 0, rangeReturnPct: B.rangeReturnPct || 0, poisonRetPct: B.poisonRetPct || 0, phanBua: B.phanBua || 0, lifeRegenPct: B.lifeRegenPct || 0, manaShield: B.manaShield || 0 /* tổng kỹ năng + trang bị (hiện được quá 100) — world.js guard chặn hiệu lực ≤ 99 % (anh 14/11) */, noiHoThan: B.noiHoThan || 0, sorb: B.sorb || 0, blockRate: B.blockRate || 0, skillEnhance: B.skillEnhance || 0, vsSeries: { ...(B.vsSeries || {}) }, fromSeries: { ...(B.fromSeries || {}) },
     // chống trạng thái (quái có võ công — vocong.js giatHero / heroCham / heroChoang / heroDoc): Thời gian phục hồi, giảm thời gian làm chậm / choáng / trúng độc %
     tgph: B.tgph || 0, tglc: B.tglc || 0, tgc: B.tgc || 0, tgtd: B.tgtd || 0, boQuaDoc: B.boQuaDoc || 0, // bỏ qua độc phòng đối phương (vocong.js khangDoc — anh 17/11)
     dmg2mana: B.dmg2mana || 0, // "Chuyển hóa sát thương thành nội lực %" (World.hit)

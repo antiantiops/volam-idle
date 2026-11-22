@@ -11,6 +11,8 @@
 // Thuốc (25/10): món { u, k: "potion:<dòng>", n: số bình } — bảng assets/data/thuoc.json (cong-cu/dung-thuoc.js): ItemDB.item(k) =
 // { n, intro, ic, c, gia, hp: [hồi mỗi nửa giây, số lần], mp, thuoc: 1 }; ItemDB.shops[Sale của script NPC] = hàng của cửa hàng.
 
+import { mocHoangKimMoRong } from "./hoang-kim-set.js";
+
 const BASE = "assets/web/item/";
 // loại món (cột 2 bảng đồ client, items.json types) -> ô trang bị của trang Trang bị (玩家装备与人物状态_装备.ini)
 export const SLOT_OF = { 0: "Weapon", 1: "Weapon", 2: "Cloth", 3: "Ring1", 4: "Necklace", 5: "Shoes", 6: "Sash", 7: "Cap", 8: "Bangle", 9: "Pendant", 10: "Horse", 11: "Mask", 12: "Mantle", 13: "Signet", 14: "Shipin", 15: "Shipin" };
@@ -20,7 +22,7 @@ const WHITE = "#ffffff";
 // cả 41 loại dòng của đồ S1 (dong-xanh.json) đều có tác dụng theo engine (KNpcAttribModify): hồi nội lực / thể lực mỗi nửa giây, hút sinh lực /
 // nội lực chỉ ở đòn ngoại công (hutSinh / hutNoi), "Kỹ năng hệ X" hiện là sát thương nội công (MAGIC_LINE — cộng vào chiêu nội công), chuyển
 // hóa sát thương thành nội lực (World.hit), độc của đồ mất dần theo nhịp (World.docDon), không thể phá hủy (máy chủ may-chu/do.js hao).
-const STAT_LINE = { lifemax_v: "life", manamax_v: "mana", staminamax_v: "stamina", lifereplenish_v: "lifeRegen", strength_v: "str",
+const STAT_LINE = { lifemax_v: "life", lifemax_yan_v: "life", manamax_v: "mana", manamax_yan_v: "mana", staminamax_v: "stamina", lifereplenish_v: "lifeRegen", lifereplenish_p: "lifeRegenPct", strength_v: "str",
   manareplenish_v: "manaRegen", staminareplenish_v: "stRegen", stealmanaenhance_p: "hutNoi",
   dexterity_v: "dex", vitality_v: "vit", allres_p: "resAll", fastwalkrun_p: "moveSpeed", attackspeed_v: "atkSpeed",
   // tốc độ đánh nội công (thi pháp — chiêu nội công + bùa nhanh theo, anh 25/10); dòng (Dương) cộng như thường
@@ -28,8 +30,8 @@ const STAT_LINE = { lifemax_v: "life", manamax_v: "mana", staminamax_v: "stamina
   meleedamagereturn_v: "thorns", addphysicsdamage_v: "dmgAdd", addphysicsdamage_p: "dmgPct", lucky_v: "luck",
   steallifeenhance_p: "hutSinh", attackratingenhance_v: "ar", ignoredefense_p: "ignoreDef", damage2addmana_p: "dmg2mana",
   // chống trạng thái (anh 29/10 lần 4 — có tác dụng khi quái có võ công, cau-hinh.json quaiVoCong): Thời gian phục hồi (giật), làm chậm, choáng, trúng độc
-  fasthitrecover_v: "tgph", fasthitrecover_yan_v: "tgph", freezetimereduce_p: "tglc", stuntimereduce_p: "tgc", poisontimereduce_p: "tgtd" };
-const RES_LINE = { poisonres_p: "poison", fireres_p: "fire", coldres_p: "cold", lightingres_p: "light", physicsres_p: "phys" };
+  fasthitrecover_v: "tgph", fasthitrecover_yan_v: "tgph", freezetimereduce_p: "tglc", stuntimereduce_p: "tgc", poisontimereduce_p: "tgtd", sorbdamage_yan_p: "sorb", block_rate: "blockRate", skill_enhance: "skillEnhance" };
+const RES_LINE = { poisonres_p: "poison", fireres_p: "fire", coldres_p: "cold", lightingres_p: "light", lightingres_yan_p: "light", physicsres_p: "phys", physicsres_yan_p: "phys" };
 const ELEM_LINE = { addpoisondamage_v: "poison", addcolddamage_v: "cold", addfiredamage_v: "fire", addlightingdamage_v: "light" };
 // sát thương nội công: dòng "Kỹ năng hệ X" của vũ khí hiện thành dòng nội công (attr.json serDmg — như bản 2) -> cộng vào mỗi đòn của chiêu nội
 // công (vocong.js elemOf / poisonOf / skDamage — engine m_CurrentMagic…Damage, m_CurrentPhysicsMagicDamageV)
@@ -159,21 +161,45 @@ export function slotFor(hero, it) {
 export function equipStats(hero, riding) {
   const B = { str: 0, dex: 0, vit: 0, eng: 0, life: 0, mana: 0, stamina: 0, res: { fire: 0, cold: 0, light: 0, poison: 0, phys: 0 }, resAll: 0,
     wdmg: null, dmgAdd: 0, dmgPct: 0, elem: { poison: 0, cold: 0, fire: 0, light: 0 }, atkSpeed: 0, castSpeed: 0, moveSpeed: 0, ar: 0, arPct: 0, def: 0,
-    lifeRegen: 0, lifeSteal: 0, thorns: 0, luck: 0, ignoreDef: 0, tgph: 0, tglc: 0, tgc: 0, tgtd: 0, dmg2mana: 0, manaRegen: 0, stRegen: 0, hutSinh: 0, hutNoi: 0,
-    elemMagic: { physics: 0, cold: 0, fire: 0, light: 0, poison: 0 } };
+    lifeRegen: 0, lifeRegenPct: 0, lifeSteal: 0, thorns: 0, luck: 0, ignoreDef: 0, tgph: 0, tglc: 0, tgc: 0, tgtd: 0, sorb: 0, blockRate: 0, skillEnhance: 0, dmg2mana: 0, manaRegen: 0, stRegen: 0, hutSinh: 0, hutNoi: 0,
+    elemMagic: { physics: 0, cold: 0, fire: 0, light: 0, poison: 0 },
+    allSkill: 0, skillAdd: Object.create(null) };
+  const extTier = mocHoangKimMoRong(hero.equip, (k) => ItemDB.item(k), riding);
   for (const [slot, it] of Object.entries(hero.equip || {})) {
     if (!it || !it.k || (slot === "Horse" && !riding) || it.ben === 0) continue; // độ bền 0: không còn tác dụng (may-chu/do.js)
     const g = ItemDB.base(it.k);
     if (slot === "Weapon" && g.dmg) B.wdmg = g.dmg;
     B.arPct += g.arPct || 0; B.def += g.def || 0; B.moveSpeed += g.move || 0; B.stamina += g.stamina || 0;
     B.life += g.life || 0; B.resAll += g.resAll || 0; B.lifeRegen += g.lifeRegen || 0;
-    const kich = soKich(hero, slot, it);
-    for (const [i, [k, v]] of (it.d || []).entries()) {
-      if (!coTacDung(i, kich)) continue;
+    const applyStat = (k, v, s) => {
+      if (typeof k !== "string" || !k || typeof v !== "number" || !Number.isFinite(v)) return;
+      if (k === "allskill_v") {
+        if (!Number.isInteger(v) || !Number.isInteger(s)) return;
+        if (s === 0) B.allSkill += v;
+        else { const id = Math.abs(s); B.skillAdd[id] = (B.skillAdd[id] || 0) + v; }
+        return;
+      }
       if (RES_LINE[k]) B.res[RES_LINE[k]] += v;
       else if (ELEM_LINE[k]) B.elem[ELEM_LINE[k]] += v;
       else if (STAT_LINE[k]) B[STAT_LINE[k]] += v;
       else if (MAGIC_LINE[ItemDB.serDmg[k]]) B.elemMagic[MAGIC_LINE[ItemDB.serDmg[k]]] += v;
+    };
+    for (const entry of g.gold || []) { // thuộc tính Hoàng Kim cố định: luôn có tác dụng khi độ bền > 0, không cần kích Ngũ hành
+      if (!Array.isArray(entry) || entry.length < 2 || entry.length > 3) continue;
+      applyStat(entry[0], entry[1], entry.length === 2 ? 0 : entry[2]);
+    }
+    if (Array.isArray(g.extGold)) {
+      for (let i = 0; i < 2 && i < g.extGold.length; i++) {
+        if (extTier < i + 1) break;
+        const entry = g.extGold[i];
+        if (!Array.isArray(entry) || (entry.length !== 2 && !(entry[0] === "allskill_v" && entry.length === 3))) continue;
+        applyStat(entry[0], entry[1], entry.length === 2 ? 0 : entry[2]);
+      }
+    }
+    const kich = soKich(hero, slot, it);
+    for (const [i, entry] of (it.d || []).entries()) {
+      if (!coTacDung(i, kich) || !Array.isArray(entry) || entry.length < 2 || entry.length > 3) continue;
+      applyStat(entry[0], entry[1], entry.length === 2 ? 0 : entry[2]);
     }
   }
   return B;
@@ -184,6 +210,18 @@ export function equipStats(hero, riding) {
 export function diemCo(hero) {
   const B = equipStats(hero, false), s = hero.start || {}, a = hero.attr || {};
   return { str: (s.str || 0) + (a.str || 0) + B.str, dex: (s.dex || 0) + (a.dex || 0) + B.dex, vit: (s.vit || 0) + (a.vit || 0) + B.vit, eng: (s.eng || 0) + (a.eng || 0) + B.eng };
+}
+
+export const DINH_NGHIEP = ["hk:148", "hk:149", "hk:150", "hk:151", "hk:152", "hk:153"];
+const DN_SET = new Set(DINH_NGHIEP);
+export function boDinhNghiep(hero) {
+  const seen = new Set();
+  for (const it of Object.values((hero && hero.equip) || {})) {
+    if (!it || !it.k || it.ben === 0) continue;
+    const meta = ItemDB.item(it.k);
+    if (meta ? meta.bo === "dinhNghiep" : DN_SET.has(it.k)) seen.add(it.k);
+  }
+  return seen;
 }
 
 // loại vũ khí đang cầm cho giới hạn vũ khí của võ công (skills.txt EqtLimit): −1 tay không (cả triền thủ — vũ khí quyền, p 6), 0 kiếm,

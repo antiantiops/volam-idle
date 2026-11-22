@@ -18,7 +18,8 @@
 // (trên / dưới). Ô so sánh (dangMac — engine nType 1): tên thêm "(đã trang bị)" màu Green (anh 30/10: màu khác tên món cho dễ nhận ra),
 // không có dòng gợi ý.
 
-import { ItemDB, coTacDung, benMax, KICH, SINH, SLOT_OF, diemCo, laVatTk } from "./itemdb.js";
+import { ItemDB, coTacDung, benMax, KICH, SINH, SLOT_OF, diemCo, laVatTk, DINH_NGHIEP, boDinhNghiep } from "./itemdb.js";
+import { mocHoangKimMoRong } from "./hoang-kim-set.js";
 import { splitDesc } from "./skilltip.js";
 import { LE_PHUC } from "../char/jx-char.js";
 
@@ -33,6 +34,15 @@ const PRICE = "Giá cả: %d %s";                                          // G_
 const TEN_O = { Cap: "Nón", Cloth: "Y phục", Sash: "Thắt lưng", Weapon: "Vũ khí", Shoes: "Hài", Bangle: "Hộ uyển", Necklace: "Dây chuyền", // G_ITEM_10..19
   Ring1: "Nhẫn trên", Ring2: "Nhẫn dưới", Pendant: "Ngọc bội" };
 const DA_MAC = " (đã trang bị)";                                       // engine "(已装备)" sau tên món ở ô so sánh
+const DOC_CO = ["hk:4135", "hk:4136"];
+const GOLD_TPL = {
+  lifemax_yan_v: "Sinh lực tối đa: #d1+ điểm",
+  manamax_yan_v: "Nội lực tối đa: +#d1-",
+  lightingres_yan_p: "Kháng lôi: +#d1-%",
+  physicsres_yan_p: "Phòng thủ vật lý: +#d1-%",
+  sorbdamage_yan_p: "Triệt tiêu sát thương: #d1+ điểm",
+  stuntimereduce_p: "Thời gian choáng: #d1~%",
+};
 // khóa bảo hiểm (anh 05/11 — it.kbh, may-chu/do.js): engine KItem::GetDesc in dòng khóa màu Green ngay dưới tên món, chữ client
 // G_ITEM_BIND_STATE (khóa thường — chưa dùng) / G_ITEM_BIND_STATE2 (vĩnh viễn — thưởng thăng cấp / online)
 const BIND = ["", "Vật phẩm này đã được khóa bảo hiểm", "Vật phẩm này đã được khóa bảo hiểm vĩnh viễn"];
@@ -62,7 +72,7 @@ export function itemTipHtml(T, it, hero, opt = {}) {
   const line = (html) => out.push(`<div>${html || "&nbsp;"}</div>`);
   const span = (t, c) => `<span style="color:${col(c)}">${esc(t)}</span>`;
   const fac = (v) => ((opt.factions || []).find((f) => f.id === v) || {}).n || String(v);
-  const fill = (k, v) => String(T.magic[k] || `${k}: #d1-`)
+  const fill = (k, v, tpl) => String(tpl || T.magic[k] || `${k}: #d1-`)
     .replace(/#([dsxm])1([+\-~]?)/g, (m, t, sg) => {
       if (t === "s") return SERIES[v] ?? String(v);
       if (t === "x") return v ? "Nữ" : "Nam";
@@ -132,8 +142,74 @@ export function itemTipHtml(T, it, hero, opt = {}) {
     requiresex: (v) => (v ? "f" : "m") === hero.sex, require_translife: () => false,
   };
   for (const [k, v] of g.req || []) if (k !== "requireseries" && k !== "requiremenpai") line(span(fill(k, v), !ok[k] || ok[k](v) ? "White" : "Red"));
+  // thuộc tính Hoàng Kim cố định (g.gold): luôn hiển thị vàng Gold (độ bền 0: xám DBlue như dòng xanh)
+  const pieceAlive = it.ben == null || it.ben > 0;
+  const fmtGold = (entry, baseCol) => {
+    const [k, v, s] = entry, kk = ItemDB.serDmg[k] || k;
+    if (kk === "block_rate") return { text: `Tỉ lệ đỡ đòn: ${v > 0 ? "+" + v : v}%`, color: baseCol };
+    if (kk === "skill_enhance") return { text: `Tăng sát thương kỹ năng: ${v > 0 ? "+" + v : v}%`, color: baseCol };
+    if (kk === "allskill_v") {
+      const val = v | 0, signed = val > 0 ? "+" + val : String(val), sid = Number.isInteger(s) ? Math.abs(s) : 0;
+      if (sid > 0) {
+        const learned = !!(hero && hero.skills && (hero.skills[sid] | 0) > 0);
+        return { text: `Kỹ năng #${sid}: ${signed} cấp (chỉ cộng nếu đã học)`, color: learned && pieceAlive ? baseCol : "DBlue" };
+      }
+      return { text: `Tất cả kỹ năng: ${signed} cấp`, color: baseCol };
+    }
+    const tpl = T.magic[kk] || ((kk.endsWith("_yan_v") || kk.endsWith("_yan_p")) && T.magic[kk.replace("_yan_", "_")]) || GOLD_TPL[kk];
+    return { text: fill(kk, v, tpl), color: baseCol };
+  };
+  if ((g.gold || []).length) {
+    const colGold = it.ben !== 0 ? "Gold" : "DBlue";
+    line(span("Thuộc tính Hoàng Kim", colGold));
+    for (const entry of g.gold) {
+      const r = fmtGold(entry, colGold);
+      line(span(r.text, r.color));
+    }
+  }
   // dòng xanh: "kỹ năng hệ X" của vũ khí hiện thành sát thương nội công hệ tương ứng (như bản 2 — attr.json serDmg)
   d.forEach(([k, v], i) => line(span(fill(ItemDB.serDmg[k] || k, v), coTacDung(i, opt.kich || 0) && it.ben !== 0 ? "Blue" : "DBlue"))); // độ bền 0: xám hết
+  // tiến độ bộ Định Nghiệp: chỉ hiện trên món thuộc bộ (6 món, còn độ bền, đủ 6/6 kích hoạt hào quang)
+  if (x.bo === "dinhNghiep" || DINH_NGHIEP.includes(it.k)) {
+    const co = boDinhNghiep(hero), n = co.size;
+    line("");
+    line(span(`Bộ Định Nghiệp: ${n}/6`, n === 6 ? "Gold" : "Yellow"));
+    for (const k of DINH_NGHIEP) {
+      const m = ItemDB.item(k), on = co.has(k);
+      line(span(`${on ? "✓" : "·"} ${(m && m.n) || k}`, on ? "Green" : "DBlue"));
+    }
+    line(span(n === 6 ? "Hào quang 6/6: Đã kích hoạt" : "Hào quang 6/6: Chưa kích hoạt", n === 6 ? "Gold" : "DBlue"));
+  }
+  // tiến độ bộ Độc Cô Cầu Bại & thuộc tính ẩn mở rộng (extGold): dùng mocHoangKimMoRong, độ bền món đang xem > 0 mới sáng Gold
+  if (x.bo === "docCoCauBai" || DOC_CO.includes(it.k)) {
+    const eq = (hero && hero.equip) || {};
+    const riding = opt.riding !== undefined ? !!opt.riding : !!(hero && hero.looks && hero.looks.horse && !hero.rideOff);
+    const extTier = mocHoangKimMoRong(eq, (k) => ItemDB.item(k), riding);
+    const group = x.extGroup, need = (Array.isArray(x.extThresholds) && x.extThresholds[0]) || 2;
+    const counts = new Map();
+    let n = 0;
+    for (const [slot, mIt] of Object.entries(eq)) {
+      if (!mIt || !mIt.k || mIt.ben === 0 || (slot === "Horse" && !riding)) continue;
+      const meta = ItemDB.item(mIt.k);
+      if (meta && (group ? meta.extGroup === group : meta.bo === "docCoCauBai" || DOC_CO.includes(mIt.k))) {
+        n += 1;
+        counts.set(mIt.k, (counts.get(mIt.k) || 0) + 1);
+      }
+    }
+    const extOn = extTier >= 1 && pieceAlive;
+    line("");
+    line(span(`Bộ Độc Cô Cầu Bại: ${n}/${need}`, extOn ? "Gold" : pieceAlive ? "Yellow" : "DBlue"));
+    for (const k of DOC_CO) {
+      const m = ItemDB.item(k), cnt = counts.get(k) || 0;
+      line(span(`${cnt ? "✓" : "·"} ${(m && m.n) || k}${cnt > 1 ? ` (×${cnt})` : ""}`, cnt ? "Green" : "DBlue"));
+    }
+    for (let i = 0; Array.isArray(g.extGold) && i < 2 && i < g.extGold.length; i++) {
+      const active = extTier >= i + 1 && pieceAlive;
+      const r = fmtGold(g.extGold[i], active ? "Gold" : "DBlue");
+      line(span(`Thuộc tính ẩn (${need} món): ${r.text} (mỗi món)`, r.color));
+    }
+    line(span(extOn ? `Kích hoạt bộ (${need}/${need}): Đã kích hoạt (+2 tất cả kỹ năng/món)` : `Kích hoạt bộ (${need}/${need}): Chưa kích hoạt${pieceAlive ? "" : " (món này đã hỏng)"}`, extOn ? "Gold" : "DBlue"));
+  }
   // gợi ý kích dòng ẩn (dòng trống trước như engine)
   const loai = opt.slot || SLOT_OF[x.t], gen = SINH.indexOf(it.s);
   if (!opt.dangMac && d.length > 1 && gen >= 0 && KICH[loai]) {

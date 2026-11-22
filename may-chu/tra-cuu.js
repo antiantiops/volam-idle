@@ -1446,7 +1446,7 @@ function rgNhacVuong() {
 function rgHoangKim() {
   const ds = [...C.N.BY.values()].filter((x) => x.ktc && x.dung && x.dung.loai === "choHoangKim");
   if (!ds.length) return null;
-  const hk = require("../src/game/hoang-kim.json").items.map((m) => m.n);
+  const hk = require("../src/game/hoang-kim.json").items.filter((m) => !m.bo).map((m) => m.n);
   const noi = [{ p: "Hoàng Kim Bảo Hạp mở ngẫu nhiên 1 trong 9 món An Bang / Định Quốc; các vật phẩm khác vẫn chờ trang bị Hoàng Kim môn phái." }];
   for (const x of ds) {
     noi.push({ h: ten(x.k) });

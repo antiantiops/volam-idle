@@ -31,7 +31,7 @@
 //   GW.openGiupDo()  khung HỖ TRỢ (F1 / Esc → Giúp đỡ — nội dung src/game/giupdo.js) · GW.openTin() khung Tin cập nhật (Esc → Tin cập nhật)
 //   GW.datTinMoi(có tin chưa xem) — chữ "Mới" ở nút Tin cập nhật + chấm đỏ ở nút Tùy chỉnh thanh dưới
 
-import { ItemDB, soKich, canWear, isPotion, benMax, benCua, giaSua, SLOT_OF, laHoan } from "./itemdb.js";
+import { ItemDB, equipStats, soKich, canWear, isPotion, benMax, benCua, giaSua, SLOT_OF, laHoan } from "./itemdb.js";
 import { MUC_GIUP, giupHtml } from "./giupdo.js";
 import { skillTipHtml, wrapRich } from "./skilltip.js";
 import { capChieu, LUYEN, MOC, chanNang, khangDu, ccCong, capCong, skCong, xungHieu } from "./rules.js"; // ccCong / capCong / skCong: +cấp kỹ năng Báo Đáp Ân Sư (anh 16/11)
@@ -769,7 +769,7 @@ export class GameWindows {
   _itemEl(h, b, x, B, held) {
     const [cw, ch] = x.c || [1, 1], bg = canWear(h, b) ? "ok" : "no", pot = x.thuoc || x.phu || x.ktc; // món Kỳ Trân Các: số chồng (lễ bao: số viên còn)
     const el = document.createElement("div");
-    el.className = "jw-it" + (b.u === held ? " held" : "");
+    el.className = "jw-it" + (b.u === held ? " held" : "") + (x.bo === "dinhNghiep" ? " jw-dn" : "");
     Object.assign(el.style, { left: b.x * UNIT + "px", top: b.y * UNIT + "px", width: cw * UNIT + "px", height: ch * UNIT + "px" });
     let html = "";
     if (!pot) for (let j = 0; j < ch; j++) for (let i = 0; i < cw; i++) html += `<i class="jw-cell ${bg}" style="left:${i * UNIT + B}px;top:${j * UNIT + B}px;width:${UNIT - 2 * B}px;height:${UNIT - 2 * B}px"></i>`;
@@ -2519,16 +2519,25 @@ export class GameWindows {
   }
   _skLv(id) { const h = this.api.hero(); return +id === 210 ? (h.fac != null ? 1 : 0) : ((h.skills || {})[id]) | 0; } // 210 Khinh công: ai đã vào phái đều có (vocong.js KC_ID)
   // anh 16/11 — Báo Đáp Ân Sư: cấp dùng = cấp đã học + Nhất Kỷ / Càn khôn còn hạn (rules.js capCong — kẹp theo dữ liệu chiêu); _skLv giữ cấp gốc (cộng điểm, kéo chiêu)
-  _skLvCo(id) { const h = this.api.hero(), lv = this._skLv(id); return +id === 210 ? lv : capCong(this.api.P.skillDb[id], id, lv, ccCong(h)); }
+  _skLvCo(id) {
+    const wd = this.api.world && this.api.world();
+    if (wd && wd.skLv) return wd.skLv(+id);
+    const h = this.api.hero(), lv = this._skLv(id);
+    return +id === 210 ? lv : capCong(this.api.P.skillDb[id], id, lv, ccCong(h));
+  }
   _fillSkills(h, force) {
     const w = this.W.get("skills"), P = this.api.P, list = this._skillList(h), pts = h.skPts | 0;
-    const key = JSON.stringify([list, h.skills, pts, this.skPage, h.lvl, ccCong(h), this.ccKieu, this.ccMau, this.ccGoc]); // + cấp Báo Đáp Ân Sư (anh 16/11)
+    const wd = this.api.world && this.api.world(), cong = ccCong(h);
+    const eq = equipStats(h, wd && wd.riding ? wd.riding() : !!(h.looks && h.looks.horse) && !h.rideOff);
+    const effSkills = skCong(h, P.skillDb, cong, eq);
+    const eff = list.map((id) => (+id === 210 ? this._skLv(id) : (effSkills[id] | 0)));
+    const key = JSON.stringify([list, h.skills, eff, pts, this.skPage, h.lvl, cong, this.ccKieu, this.ccMau, this.ccGoc]); // + cấp Báo Đáp Ân Sư & trang bị
     if (!force && key === this._skKey) return;
     this._skKey = key;
     w.set("RemainPoint", pts, "fight");
     const per = this.skSlots.length, from = this.skPage * per;
     for (const sl of this.skSlots) {
-      const id = list[from + sl.i] ?? null, s = id != null && P.skillDb[id], lv = id != null ? this._skLv(id) : 0;
+      const idx = from + sl.i, id = list[idx] ?? null, s = id != null && P.skillDb[id], lv = id != null ? this._skLv(id) : 0;
       sl.id = id;
       const ic = id != null && P.skillIcon[id];
       if (ic) { const src = "assets/web/icon/" + ic; if (sl.icon.getAttribute("src") !== src) sl.icon.src = src; sl.icon.style.display = ""; } else sl.icon.style.display = "none";
@@ -2537,18 +2546,18 @@ export class GameWindows {
       // màu icon ngũ hành — CC_MAU); số dưới ô vẫn là cấp đã học (cộng điểm theo số này), N = phần cộng thật sau khi kẹp theo dữ liệu chiêu
       // 2 kiểu (anh chọn — CC_KIEU): "goc" = "+N" ở góc trên ô chiêu (CC_GOC: chữ trắng viền tím sáng); "so" = số cấp dưới ô đổi thành cấp đang dùng (20 -> 22)
       // tô màu CC_MAU. Ô xem chiêu hiện "Đẳng cấp hiện thời: 20+2" ở cả 2 kiểu (skilltip.js lvGoc). this.ccKieu / ccMau: đổi lúc chạy để chụp mẫu cho anh chọn
-      const them = id != null && lv > 0 ? this._skLvCo(id) - lv : 0, kieu = this.ccKieu || CC_KIEU, st = w.item("SkillText_" + sl.i, "fightSub");
+      const them = id != null && lv > 0 ? eff[idx] - lv : 0, kieu = this.ccKieu || CC_KIEU, st = w.item("SkillText_" + sl.i, "fightSub");
       if (st && st._mau0 == null) st._mau0 = st.lab.style.color || "";
-      if (kieu === "so" && them > 0) { w.set("SkillText_" + sl.i, lv + them, "fightSub"); if (st) st.lab.style.color = this.ccMau || CC_MAU; }
+      if (kieu === "so" && them !== 0) { w.set("SkillText_" + sl.i, lv + them, "fightSub"); if (st) st.lab.style.color = this.ccMau || CC_MAU; }
       else if (st) st.lab.style.color = st._mau0;
-      const goc = kieu !== "so" && them > 0;
+      const goc = kieu !== "so" && them !== 0;
       if (goc && !sl.cong) {
         const b = sl.cong = document.createElement("b"); // cùng phông với số cấp dưới ô
         b.className = "jw-sk-cong";
         Object.assign(b.style, { position: "absolute", right: "1px", top: "0px", font: st ? st.el.style.font : "12px monospace", pointerEvents: "none", lineHeight: "13px", zIndex: 1 });
         sl.t.el.appendChild(b);
       }
-      if (sl.cong) { Object.assign(sl.cong.style, this.ccGoc || CC_GOC); sl.cong.textContent = goc ? "+" + them : ""; sl.cong.style.display = goc ? "" : "none"; }
+      if (sl.cong) { Object.assign(sl.cong.style, this.ccGoc || CC_GOC); sl.cong.textContent = goc ? (them > 0 ? "+" + them : String(them)) : ""; sl.cong.style.display = goc ? "" : "none"; }
       // còn điểm và chưa tới mức của cấp nhân vật (rules.js capChieu — như engine: cấp chiêu ≤ cấp nhân vật − cấp yêu cầu + 1); chiêu luyện (sách 90 /
       // 120 có cờ luyện — anh 29/10) không cộng điểm: không có nút +
       const luyen = id != null && LUYEN.has(+id), can = id != null && !luyen && pts > 0 && !(s && lv >= capChieu(h, s, id));
@@ -2580,9 +2589,11 @@ export class GameWindows {
     // chiêu luyện: độ luyện hiện tại = độ luyện đã có / độ luyện cần ở cấp đang có (bảng client — P.luyenKy)
     // anh 16/11 — Báo Đáp Ân Sư: ô xem chiêu theo cấp dùng (cấp đã học + Nhất Kỷ / Càn khôn — như engine hiện cấp có cộng từ vật phẩm), hỗ trợ từ chiêu khác cũng theo cấp
     // dùng; độ luyện theo cấp gốc (bảng luyện của cấp đã học)
-    const h = this.api.hero(), lv0 = this._skLv(id), lv = this._skLvCo(id), bang = LUYEN.has(+id) && P.luyenKy && P.luyenKy[id], luyen = bang ? { exp: (h.luyen || {})[id] || 0, can: bang[lv0 - 1] || 0 } : null;
-    const k = `${id}:${lv}:${h.lvl}:${JSON.stringify(h.skills || {})}:${ccCong(h)}:${luyen ? luyen.exp : ""}`;
-    if (t.dataset.k !== k) { t.dataset.k = k; t.querySelector(".b").innerHTML = skillTipHtml(T, P.skillDb, id, lv, { heroLvl: h.lvl, heroSkills: skCong(h, P.skillDb), luyen, lvGoc: lv0 }).html; this._crisp(t, T.box); }
+    const h = this.api.hero(), wd = this.api.world && this.api.world(), lv0 = this._skLv(id), lv = this._skLvCo(id), bang = LUYEN.has(+id) && P.luyenKy && P.luyenKy[id], luyen = bang ? { exp: (h.luyen || {})[id] || 0, can: bang[lv0 - 1] || 0 } : null;
+    const eq = equipStats(h, wd && wd.riding ? wd.riding() : !!(h.looks && h.looks.horse) && !h.rideOff);
+    const effSkills = skCong(h, P.skillDb, ccCong(h), eq);
+    const k = `${id}:${lv}:${lv0}:${h.lvl}:${JSON.stringify(h.skills || {})}:${JSON.stringify(effSkills)}:${ccCong(h)}:${luyen ? luyen.exp : ""}`;
+    if (t.dataset.k !== k) { t.dataset.k = k; t.querySelector(".b").innerHTML = skillTipHtml(T, P.skillDb, id, lv, { heroLvl: h.lvl, heroSkills: effSkills, luyen, lvGoc: lv0 }).html; this._crisp(t, T.box); }
     this._placeFrame(t, e);
   }
   _hideSkTip() { if (this.skTip) { this.skTip.style.display = "none"; this.skTip.dataset.k = ""; } }

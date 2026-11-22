@@ -462,6 +462,27 @@ body.dt .bc-chon > div > i { transform: scale(1.5); }
 #jxwin .jw-box .jw-cell.no, #jxwin .gd-xem .jw-cell.no { background: rgb(49,0,0); }
 #jxwin .jw-box .jw-it:hover .jw-cell, #jxwin .gd-xem .jw-it:hover .jw-cell { filter: brightness(1.35); }
 #jxwin .jw-box .jw-it.held { visibility: hidden; }
+/* viền vàng chạy quanh cả món Định Nghiệp trên lưới món (.jw-box / .gd-xem — gắn trên .jw-it ở _itemEl; reduced-motion đứng yên) */
+@property --jw-dn-a { syntax: "<angle>"; initial-value: 0deg; inherits: false; }
+@keyframes jw-dn-quay { to { --jw-dn-a: 1turn; } }
+#jxwin .jw-box .jw-it.jw-dn::before, #jxwin .gd-xem .jw-it.jw-dn::before { content: ""; position: absolute; inset: 1px; z-index: 2; pointer-events: none; box-sizing: border-box; border: 1px solid rgba(255,212,92,.45); }
+#jxwin .jw-box .jw-it.jw-dn::after, #jxwin .gd-xem .jw-it.jw-dn::after { content: ""; position: absolute; inset: 0; z-index: 2; padding: 2px; pointer-events: none; box-sizing: border-box; opacity: 0; }
+@supports (mask-composite: exclude) or (-webkit-mask-composite: xor) {
+  #jxwin .jw-box .jw-it.jw-dn::after, #jxwin .gd-xem .jw-it.jw-dn::after {
+    opacity: 1;
+    background: conic-gradient(from var(--jw-dn-a), transparent 0deg 268deg, rgba(255,198,64,.55) 292deg, #fff4be 318deg, rgba(255,222,110,.65) 338deg, transparent 360deg);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    animation: jw-dn-quay 2.6s linear infinite;
+  }
+}
+#jxwin .jw-box .jw-it.jw-dn.held::before, #jxwin .jw-box .jw-it.jw-dn.held::after,
+#jxwin .gd-xem .jw-it.jw-dn.held::before, #jxwin .gd-xem .jw-it.jw-dn.held::after { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  #jxwin .jw-box .jw-it.jw-dn::after, #jxwin .gd-xem .jw-it.jw-dn::after { animation: none; --jw-dn-a: 45deg; }
+}
 /* số bình của chồng thuốc: góc dưới phải ô */
 #jxwin .jw-box .jw-n, #jxwin .gd-xem .jw-n, #jxwin .jw-slot[data-kham] > .jw-n { position: absolute; right: 2px; bottom: 1px; font: 13px/13px var(--jx); font-weight: normal; color: #fff; pointer-events: none; text-shadow: 1px 0 #000, -1px 0 #000, 0 1px #000, 0 -1px #000, 1px 1px #000, -1px -1px #000, 1px -1px #000, -1px 1px #000; }
 /* ô số lượng của khung mua bán (买卖确认.ini BuyNumber) */
