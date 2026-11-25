@@ -89,14 +89,7 @@ const cv = $("#cv"), ctx = cv.getContext("2d");
 
 function show(id) { $$(".screen").forEach((s) => s.classList.toggle("on", s.id === id)); $("#hud").classList.toggle("on", id === null); }
 
-// bản này chỉ chạy trên máy cục bộ / mạng LAN
-const mienDung = (h) => /\.localhost$/.test(h) ||
-  /^(localhost|127(\.\d+){3}|\[::1\]|::1|10(\.\d+){3}|192\.168(\.\d+){2}|172\.(1[6-9]|2\d|3[01])(\.\d+){2})$/.test(h);
 async function boot() {
-  if (!mienDung(location.hostname)) {
-    $("#load-msg").textContent = "Bản game này chỉ chạy trên máy cục bộ / mạng LAN (localhost hoặc IP nội bộ).";
-    return;
-  }
   loiChao(); if (kyChuan() !== 0xdb5473f) { voKy("khởi động"); return; } // ấn ký bản gốc bị sửa: dừng (an-ky.js)
   P.dx = "DX·S2·5630e77e"; // dấu riêng của bản gốc (README lượt 60): bản chép nào có chuỗi này là chép từ máy chủ của anh
   dangKySW(); // service worker: giữ file assets/ đã tải trong trình duyệt (src/sw.js — anh 28/10)
