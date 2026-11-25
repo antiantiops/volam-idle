@@ -1,6 +1,6 @@
 FROM node:24-slim
 
-WORKDIR /app
+WORKDIR /game
 
 RUN mkdir -p /data && chown -R node:node /data
 
