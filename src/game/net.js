@@ -20,11 +20,6 @@ const MAT_PHIEN = new Set(["het-phien", "bi-da", "bi-khoa", "bao-tri", "chua-duy
 // Khóa an toàn (may-chu/bao-mat.js — anh 10/11): mỗi lần tải trang 1 mã ngẫu nhiên gửi kèm mọi yêu cầu (đầu x-trang) — mở khóa mật khẩu cấp 2 chỉ
 // có hiệu lực cho đúng trang này (tải lại / đóng trang là khóa lại). Máy chủ trả 403 ma "can-mk2" (cần mở khóa) / "can-dat-mk2" (chưa có mật khẩu
 // cấp 2): Net.onBaoMat(ma, câu) hỏi người chơi (src/game/baomat.js) -> true thì gửi lại đúng yêu cầu đó 1 lần
-// chỉ gọi máy chủ khi trang đang ở máy cục bộ / mạng LAN (như main.js mienDung)
-const mienMay = (h) => {
-  const s = String(h).toLowerCase();
-  return /\.localhost$/.test(s) || /^(localhost|127(\.\d+){3}|\[::1\]|::1|10(\.\d+){3}|192\.168(\.\d+){2}|172\.(1[6-9]|2\d|3[01])(\.\d+){2})$/.test(s);
-};
 const TRANG = (() => {
   const a = new Uint8Array(18); crypto.getRandomValues(a);
   return btoa(String.fromCharCode(...a)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
@@ -59,7 +54,6 @@ export const Net = {
 
   async call(method, url, body, opt = {}) {
     let r;
-    if (!mienMay(location.hostname)) throw Object.assign(new Error("Không kết nối được máy chủ"), { net: true }); // chống sao chép (anh 10/11)
     // opt.timeout (ms): quá thì bỏ yêu cầu (khung khóa an toàn — mạng điện thoại chập chờn không treo cả màn hình)
     const ab = opt.timeout ? new AbortController() : null, hen = ab ? setTimeout(() => ab.abort(), opt.timeout) : 0;
     try {

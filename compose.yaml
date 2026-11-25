@@ -13,7 +13,7 @@ services:
         target: /data
       - type: bind
         source: ./assets
-        target: /app/assets
+        target: /game/assets
         read_only: true
         bind:
           create_host_path: false

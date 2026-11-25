@@ -24,7 +24,7 @@ Gói chạy cục bộ bằng Docker cho máy chủ và giao diện Võ Lâm Idl
 └── src/
 ```
 
-`compose.yaml` mount `./assets` vào `/app/assets` ở chế độ chỉ đọc (`read_only: true`) với `create_host_path: false`, vì vậy `./assets` phải tồn tại sẵn trên máy host trước khi chạy.
+`compose.yaml` mount `./assets` vào `/game/assets` ở chế độ chỉ đọc (`read_only: true`) với `create_host_path: false`, vì vậy `./assets` phải tồn tại sẵn trên máy host trước khi chạy.
 
 ## Khởi động
 
