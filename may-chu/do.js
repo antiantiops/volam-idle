@@ -67,6 +67,9 @@ const HK_BAO = ["hk:217", "hk:218", "hk:219", "hk:220", "hk:399", "hk:400", "hk:
 const NKD = () => require("./nhat-ky"); // sổ hoạt động từng tài khoản (nạp lúc dùng)
 const NG = require("./nguon-mon"); // nguồn gốc món: mã riêng + nơi sinh ra + đường đi (anh 18/11 tối — may-chu/nguon-mon.js)
 const CHR = doc("assets/data/char.json"), MS = doc("assets/data/mobstats.json"), CFG = require("./cau-hinh-qt").apDung(doc("cau-hinh.json")); // + phần quản trị sửa ở F10 → Cấu hình (du-lieu/cau-hinh-qt.json — anh 11/11)
+// cau-hinh.json: thangSuKien { bat, drop: { bat, tiLe } }; mặc định tắt, chỉ chạy đúng tháng VN.
+require("./thang-su-kien").cf({ bat: CFG.thangSuKien?.bat === true, drop: { bat: CFG.thangSuKien?.drop?.bat === true, tiLe: CFG.thangSuKien?.drop?.tiLe } });
+const hetThang = (now = Date.now()) => { const vn = new Date(now + 7 * 3600000); return Date.UTC(vn.getUTCFullYear(), vn.getUTCMonth() + 1, 1) - 7 * 3600000; };
 const THUOC = doc("assets/data/thuoc.json"), TC = CFG.thuoc || { chongToiDa: 60, muaToiDa: 60, banLai: 0.5 };
 const TD = CFG.trenDat || { giay: 133, toiDa: 100 };
 const MAPS = doc("assets/web/map/map.json"), FULL = (() => { try { return doc("assets/web/map/full/index.json"); } catch { return null; } })();
@@ -86,6 +89,11 @@ const laPhu = (it) => !!(it && (BY.get(it.k) || {}).phu);
 // là thuốc thường (thuoc 1), không bày ở Dược điếm.
 const KTC = (() => { try { return doc("assets/data/ky-tran-cac.json"); } catch { return { items: {}, the: [], buff: {} }; } })();
 for (const [k, x] of Object.entries(KTC.items)) BY.set(k, { ...x, k });
+const TSK = doc("src/game/thang-su-kien.json");
+for (const [k, x] of Object.entries(TSK)) {
+  if (BY.has(k)) throw new Error(`Trung khoa vat pham thang su kien: ${k}`);
+  BY.set(k, { ...x, k });
+}
 const HANG_KTC = new Map(KTC.the.flatMap((t) => t.hang.filter((o) => o.k).map((o) => [o.k, o.gia])));
 // "hoàn" = trạng thái vật phẩm có chỉ số chiến đấu (buff.attrs): hoàn Tống Kim + hoàn Kỳ Trân Các (Phi Tốc, Đại Lực, Nội … hoàn, Kích Công Trợ Lực, Âm Dương…) —
 // trong trận Tống Kim tối đa 3 phút, trọng thương thì mất (anh 17/11 — tong-kim.js hoanTran). Chiến cổ / Lệnh Bài (đồng đội — trình duyệt) không tính
@@ -122,7 +130,7 @@ const KBH_TAM = 1;
 // (act mua — giá × tongKim.giaThuoc), chồng riêng không gộp với thuốc thường; không cất rương / giao dịch / bày bán / bán / vứt; rời trận hoặc hết trận thì mất
 // (tong-kim.js boThuocTk — nhịp api.js)
 const CAU_TK = "Thuốc Tống Kim chỉ dùng trong chiến trường — không mang ra ngoài được (rời trận / hết trận tự mất)";
-const cungKhoa = (a, b) => (a.kbh | 0) === (b.kbh | 0) && !a.tk === !b.tk;
+const cungKhoa = (a, b) => (a.kbh | 0) === (b.kbh | 0) && !a.tk === !b.tk && (a.het ?? 0) === (b.het ?? 0);
 const voiKhoa = (kbh) => (kbh | 0 ? { kbh: kbh | 0 } : {});
 // anh 18/11 — khóa có hạn đi theo món (món mở từ hương bao khóa 72 giờ — bao-dap-an-su.js): món mới phân ra / dời / gộp từ món khóa có hạn giữ đúng giờ mở khóa
 // (thiếu kbhHet thì chuan không bao giờ mở — kbh 1 không có giờ coi như khóa vĩnh viễn). Gộp chồng: giờ mở khóa muộn nhất (không bản nào mở sớm hơn hạn của nó)
@@ -855,11 +863,12 @@ function nhat(h, key, ds) {
     if (j < 0) { Q = C; j = C.findIndex((v) => v.g === (g | 0)); }
     if (j < 0) { kq.mat.push(g | 0); continue; }
     const v = Q[j], bo = () => { Q.splice(Q.indexOf(v), 1); if (Q === C) verChung++; };
+    if (v.it && v.it.het != null && (!(+v.it.het > 0) || +v.it.het <= Date.now())) { bo(); kq.mat.push(v.g); continue; }
     if (v.tien) { h.gold = (h.gold || 0) + v.tien; kq.tien += v.tien; kq.vang.push(v.g); bo(); continue; }
     if (BUA.mon[v.it.k]) { bo(); const r = nhatBua(h, key, v.it); kq.nhan.push({ g: v.g, n: tenMon(v.it), d: 0, db: 1, bua: 1, tin: r.tin, ...(r.hoi ? { hoi: r.hoi } : {}) }); continue; } // bùa Phong Hỏa: nhặt là dùng ngay
     if ((BY.get(v.it.k) || {}).chi) { bo(); kq.nhan.push({ g: v.g, n: tenMon(v.it), d: 0, db: 1, tin: nhatChi(h, v.it, v.z) }); continue; } // đồ chí / lộ chí (db: món đặc biệt — trình duyệt tô màu tin)
     if (laKtc(v.it) && xepChong(v.it)) { // mật đồ, Thủy Tinh, Hộp lễ vật vượt ải …: dồn vào chồng cùng loại trong túi
-      try { themChong(h, BY.get(v.it.k), v.it.n || 1, v.it.kbh, false, v.it.kbhHet); } catch { kq.day.push(v.g); continue; }
+      try { themChong(h, BY.get(v.it.k), v.it.n || 1, v.it.kbh, false, v.it.kbhHet, v.it.het); } catch { kq.day.push(v.g); continue; }
       donChong(h, v.it.k);
       bo(); kq.nhan.push({ g: v.g, n: tenMon(v.it), d: 0, sl: v.it.n || 1, db: 1 }); continue;
     }
@@ -1136,6 +1145,10 @@ function gietQuai(h, ds, ctx) {
     const ptGiet = (r[7] | 0) === 1 || !!ctx.pt, khongRoi = ctx.khongRoi || (ptGiet && !sat); // ctx.pt: quái chung phân thân giết (quai-chung.js nhanThuong)
     const g = khongRoi ? 0 : g0;
     if (khongRoi) its.length = 0;
+    if (!va && !sat && !thuyen && !ptGiet && !ctx.ph && !khongRoi && !boss && !ta && Z && FARM.has(Z.kind)) {
+      const roi = require("./thang-su-kien").drop(h, cho.z, t);
+      if (roi) { const het = hetThang(t); its.push(...roi.award.map((a) => ({ ...a, het }))); }
+    }
     kq.kn += e; kq.len += len; kq.n++;
     if (!va && !sat && !thuyen && !ptGiet && !ctx.ph) kq.nBh++; // bang hội đợt 2: quái tính cống hiến (bỏ quái ải, boss sát thủ, thuyền PLĐ, quái phân thân, quân Phong Hỏa — có nguồn riêng)
     // anh 16/11 — Báo Đáp Ân Sư: Sợi chỉ màu rơi từ quái bãi luyện công cấp ≥ chiCap (tỉ lệ + trần ngày — bao-dap-an-su.js roiChi); người đánh phụ bản chung / phân thân / ủy thác không
@@ -1803,7 +1816,7 @@ function chuyen(h, A, B, it, x, y, toiDa = Infinity) {
   const mx = chongMax(it.k);
   for (const o of B.filter((q) => q.k === it.k && cungKhoa(q, it) && q.n < mx && (!coXY || (q.x === x && q.y === y)))) { const m = Math.min(con, mx - o.n); if (m > 0) gopHet(o, it); o.n += m; con -= m; da += m; }
   if (con > 0) {
-    const moi = { k: it.k, n: con, ...khoaCua(it), ...(it.tk ? { tk: 1 } : {}) }, at = coXY ? (choTrong(B, moi, x, y) ? [x, y] : null) : choDau(B, moi);
+    const moi = { k: it.k, n: con, ...khoaCua(it), ...(it.tk ? { tk: 1 } : {}), ...(it.het != null ? { het: it.het } : {}) }, at = coXY ? (choTrong(B, moi, x, y) ? [x, y] : null) : choDau(B, moi);
     if (at && !da && con === it.n) { A.splice(A.indexOf(it), 1); [it.x, it.y] = at; B.push(it); return con; } // cả chồng sang
     if (at) { moi.u = ++h.uN; [moi.x, moi.y] = at; B.push(moi); da += con; }
   }
@@ -1865,7 +1878,7 @@ function muaChong(h, x, gia1, n, tk = false) {
 // Khóa bảo hiểm (anh 05/11): chỉ dồn các chồng cùng trạng thái khóa (engine KItemList gộp chồng so nState)
 function donChongL(G, k) {
   const mx = chongMax(k);
-  const nhom = (o) => (o.kbh | 0) + (o.tk ? "t" : ""); // khóa bảo hiểm / thuốc Tống Kim: chỉ dồn chồng cùng loại
+  const nhom = (o) => (o.kbh | 0) + (o.tk ? "t" : "") + "|" + (o.het ?? 0); // khóa bảo hiểm / thuốc Tống Kim / hạn dùng: chỉ dồn chồng cùng loại
   for (const kh of new Set(G.filter((o) => o.k === k).map(nhom))) {
     const L = G.filter((o) => o.k === k && nhom(o) === kh && xepChong(o)).sort((a, b) => a.y - b.y || a.x - b.x);
     for (let i = 0, j = L.length - 1; i < j; ) {
@@ -1888,7 +1901,7 @@ let XEP_TT = null; // khóa món -> thứ tự trong bảng món (items.json, th
 function xepLuoi(C, ds) {
   if (ds) uong({ bag: C }, ds);
   const nhom = new Map();
-  for (const o of C) if (xepChong(o) && o.con == null) { const g = o.k + "|" + (o.kbh | 0) + (o.tk ? "t" : ""); (nhom.get(g) || nhom.set(g, []).get(g)).push(o); }
+  for (const o of C) if (xepChong(o) && o.con == null) { const g = o.k + "|" + (o.kbh | 0) + (o.tk ? "t" : "") + "|" + (o.het ?? 0); (nhom.get(g) || nhom.set(g, []).get(g)).push(o); }
   for (const G of nhom.values()) {
     if (G.length < 2) continue;
     G.sort((a, b) => a.u - b.u);
@@ -1939,13 +1952,13 @@ function xepDo(C) {
   return [...C].sort((a, b) => a.y - b.y || a.x - b.x);
 }
 // kbh: thêm món khóa bảo hiểm (KBH_VV — thưởng thăng cấp / online, món mở ra từ món khóa): chỉ dồn vào chồng cùng trạng thái khóa
-function themChong(h, x, n, kbh = 0, tk = false, het = 0) { // tk: thuốc Tống Kim (chồng riêng); het: giờ mở khóa khi kbh = KBH_TAM (anh 18/11 — thiếu giờ thì khóa vĩnh viễn)
+function themChong(h, x, n, kbh = 0, tk = false, het = 0, han) { // tk: thuốc Tống Kim (chồng riêng); het: giờ mở khóa khi kbh = KBH_TAM (anh 18/11 — thiếu giờ thì khóa vĩnh viễn); han: hạn dùng vật phẩm
   if ((kbh | 0) === KBH_TAM && !(+het > 0)) kbh = KBH_VV;
-  const mx = chongMax(x.k), chong = h.bag.filter((o) => o.k === x.k && (o.kbh | 0) === (kbh | 0) && !o.tk === !tk && o.n < mx);
+  const mx = chongMax(x.k), chong = h.bag.filter((o) => o.k === x.k && (o.kbh | 0) === (kbh | 0) && !o.tk === !tk && (o.het ?? 0) === (han ?? 0) && o.n < mx);
   let con = n - chong.reduce((t, o) => t + mx - o.n, 0);
   const moi = [];
   while (con > 0) {
-    const it = { k: x.k, n: Math.min(con, mx), ...voiKhoa(kbh), ...((kbh | 0) === KBH_TAM ? { kbhHet: +het } : {}), ...(tk ? { tk: 1 } : {}) }, at = choDau([...h.bag, ...moi], it);
+    const it = { k: x.k, n: Math.min(con, mx), ...voiKhoa(kbh), ...((kbh | 0) === KBH_TAM ? { kbhHet: +het } : {}), ...(tk ? { tk: 1 } : {}), ...(han != null ? { het: han } : {}) }, at = choDau([...h.bag, ...moi], it);
     if (!at) loi("Hành trang không đủ chỗ");
     [it.x, it.y] = at; moi.push(it); con -= it.n;
   }
@@ -1959,6 +1972,70 @@ function themChong(h, x, n, kbh = 0, tk = false, het = 0) { // tk: thuốc Tốn
 // (Đại Thành: hỏi chọn chiêu) | { hoiSo, con } (lễ bao: hỏi số viên) — kn: 1 = đổi sách / điểm / chiêu (api trả thêm kn để trình duyệt cập nhật)
 const tenChieu = (id) => ((SK.skills[id] || {}).n || "chiêu " + id).trim();
 const gioPhutS = (s) => { const g = Math.floor(s / 3600), p = Math.floor((s % 3600) / 60); return g ? `${g} giờ${p ? ` ${p} phút` : ""}` : `${p} phút`; };
+function tuiThuThang(h, it, award, now, het) {
+  const t = now === undefined ? Date.now() : now;
+  if (typeof t !== "number" || !Number.isFinite(t)) loi("Thời gian không hợp lệ");
+  if (!h || !Array.isArray(h.bag)) loi("Thiếu dữ liệu hành trang");
+  const idx = it && typeof it === "object" ? h.bag.indexOf(it) : -1;
+  if (idx < 0) loi("Không có món này trong túi");
+  const hetHopLe = (v) => typeof v === "number" && Number.isFinite(v) && v > 0;
+  if (Object.hasOwn(it, "het") && it.het !== undefined && (!hetHopLe(it.het) || it.het <= t)) {
+    loi("Vật phẩm đã hết hạn sử dụng");
+  }
+  const selN = it.n === undefined ? 1 : it.n;
+  if (!Number.isSafeInteger(selN) || selN < 1) loi("Không có món này trong túi");
+  if (!award || typeof award !== "object" || typeof award.k !== "string") loi("Phần thưởng không hợp lệ");
+  const x = BY.get(award.k);
+  if (!x) loi("Không có món này");
+  if (!Number.isSafeInteger(award.n) || award.n <= 0) loi("Số lượng phần thưởng không hợp lệ");
+  const draft = { bag: h.bag.map((o) => ({ ...o })), uN: h.uN | 0 };
+  if (selN === 1) draft.bag.splice(idx, 1);
+  else draft.bag[idx].n = selN - 1;
+  const kb = khoaCua(it);
+  if (Object.hasOwn(TSK, x.k)) {
+    if (!hetHopLe(het) || het <= t) loi("Hạn sử dụng phần thưởng không hợp lệ");
+    const mx = chongMax(x.k);
+    let con = award.n;
+    while (con > 0) {
+      const mon = { k: x.k, n: Math.min(con, mx), het, ...kb, u: ++draft.uN };
+      if (!vaoO(draft.bag, mon)) loi("Hành trang không đủ chỗ");
+      con -= mon.n;
+    }
+    return draft;
+  }
+  if (x.chi || x.doi || !xepChong(x)) loi("Phần thưởng chưa hỗ trợ");
+  draft.bag = draft.bag.filter((o) => !(o && o.k === x.k && Object.hasOwn(o, "het") && o.het !== undefined && (!hetHopLe(o.het) || o.het <= t)));
+  themChong(draft, x, award.n, kb.kbh, false, kb.kbhHet);
+  return draft;
+}
+// Craft/mốc Noel-Tết: caller có plan đã kiểm điều kiện; commit nguyên khối hoặc rollback.
+function thangSuKien(h, plan, now = Date.now()) {
+  if (!plan || !plan.ok || !Array.isArray(plan.consume) || !Array.isArray(plan.award)) loi("Kế hoạch sự kiện không hợp lệ");
+  const het = hetThang(now);
+  const old = { bag: h.bag, uN: h.uN, gold: h.gold, exp: h.exp, thangSuKien: h.thangSuKien };
+  try {
+    h.bag = h.bag.map((it) => ({ ...it }));
+    for (const need of plan.consume) {
+      let con = need.n | 0;
+      for (let i = h.bag.length - 1; i >= 0 && con > 0; i--) {
+        const it = h.bag[i];
+        if (it.k !== need.k || (it.het != null && (!(+it.het > 0) || +it.het <= now))) continue;
+        const lay = Math.min(con, it.n || 1); it.n = (it.n || 1) - lay; con -= lay;
+        if (it.n <= 0) h.bag.splice(i, 1);
+      }
+      if (con) loi("Nguyên liệu đã thay đổi, hãy thử lại");
+    }
+    for (const award of plan.award) {
+      const x = BY.get(award.k); if (!x || !(award.n > 0)) loi("Phần thưởng không hợp lệ");
+      for (let i = 0; i < award.n; i++) if (!vaoO(h.bag, { k: award.k, n: 1, ...(Object.hasOwn(TSK, award.k) ? { het } : {}), u: ++h.uN })) loi("Hành trang không đủ chỗ");
+    }
+    h.gold = (h.gold || 0) + (plan.goldDelta || 0);
+    if (h.gold < 0) loi("Ngân lượng đã thay đổi, hãy thử lại");
+    const exp = Math.max(0, Math.floor(+plan.expDelta || 0));
+    if (exp) { h.exp = (h.exp || 0) + exp; lenCap(h); }
+    if (plan.nextEventState) h.thangSuKien = plan.nextEventState;
+  } catch (e) { Object.assign(h, old); throw e; }
+}
 const LD_CAM = new Set(["trangThai", "kyNang"]); // loại công dụng không dùng được trong sân Công Bình Tử (anh 17/11 — dungVat)
 function dungVat(h, it, b, key, qt = false) {
   if (!it) loi("Không có món này trong túi");
@@ -2012,6 +2089,34 @@ function dungVat(h, it, b, key, qt = false) {
     bot(); [moi.x, moi.y] = at; moi.u = ++h.uN; h.bag.push(moi);
   };
   switch (D.loai) {
+    case "thangSuKien": { // Mở hộp hoặc dùng thành phẩm Noel / Tết (may-chu/thang-su-kien.js)
+      if (LDA().chan(tkCuaKhoa(key), BAI_NAY.get(key), oCuaKhoa(key))) loi("Trong sân Công Bình Tử không dùng được vật phẩm này — rời sân rồi dùng");
+      const laHop = D.hop === "noel" || D.hop === "tet";
+      if (oTrongTui(h) < (laHop ? 6 : 10)) loi(`Hành trang cần ít nhất ${laHop ? 6 : 10} ô trống mới ${laHop ? "mở" : "dùng"} được ${x.n.trim()}`);
+      const now = Date.now();
+      const het = hetThang(now);
+      let draft = null;
+      const view = {
+        lvl: h.lvl,
+        thangSuKien: h.thangSuKien,
+        demMon: (k) => (k === it.k ? (it.n ?? 1) : 0),
+        duCho: (add) => {
+          draft = tuiThuThang(h, it, add[0], now, het);
+          return true;
+        },
+      };
+      const SK = require("./thang-su-kien.js");
+      const plan = laHop ? SK.moHop(view, D.hop, now) : SK.dung(view, it.k, now);
+      if (!plan.ok) loi(plan.msg);
+      h.bag = draft.bag;
+      h.uN = draft.uN;
+      if (plan.nextEventState) h.thangSuKien = plan.nextEventState;
+      const e = Math.max(0, Math.floor(+plan.expDelta || 0));
+      if (e > 0) { h.exp = (h.exp || 0) + e; lenCap(h); }
+      const tenQua = String((BY.get(plan.award[0].k) || {}).n || tenMon(plan.award[0])).trim();
+      if (laHop) return { msg: `Mở ${x.n.trim()}: nhận được ${tenQua}` };
+      return { msg: `Sử dụng ${x.n.trim()}: nhận được ${tenQua}${e > 0 ? ` và ${e.toLocaleString("vi-VN")} điểm kinh nghiệm` : ""}` };
+    }
     case "ngua": { // mã bài (market_pack.lua): 1 con ngựa — hạn D.ngay ngày từ lúc dùng (anh 27/10), hết hạn thì biến mất (chuan)
       // D.vinhVien (anh 16/11 — Báo Đáp Ân Sư: Mã bài Bôn Tiêu / Phiên Vũ từ hương bao): ngựa không hạn, cờ vv — không bán cho cửa hàng (act ban), Trợ Thủ không tự bán
       const ng = BY.get(D.ngua); if (!ng) loi("Không có ngựa này");
@@ -2436,4 +2541,4 @@ function taoQua(h, q) {
 
 // NOI: phần dùng chung cho may-chu/da-tau.js (Dã Tẩu)
 const NOI = { oTrong: oTrongTui, laTB, campPhai: (fac) => (fac == null ? 0 : PHAI_CAMP.get(+fac) || 0), CFG, BY, ZONES, FARM, THANH, BAI_NAY, capVao, need, MAX_LEVEL, lenCap, loi, ngayVN, tien, themChong, coMon, mayMan, vaoTui, mang: MANG, soThuoc, laThuoc, xepChong, donChong, TIEN_MAX, ROWS, CHIA_XA, KBH_VV, KBH_TAM, CAU_KBH, KHONG_KHOA, CAU_TK, MAPS, FULL }; // chợ trời (may-chu/cho-troi.js): thuốc mang tối đa, gộp chồng, tiền tối đa; ROWS: sạp Hệ thống của Dã Tẩu dựng món; MAPS / FULL: bảng bản đồ đã nạp (region, scale — may-chu/npc-gan.js đổi tọa độ NPC, anh 13/11)
-module.exports = { muaLaiGui, MUA_LAI, NOI, mobStats: MS, quaiCap: (lv) => (QUAI_CAP ? QUAI_CAP(lv) : null), knBai, baiNay, chuan, hamChieu, laLuyen, sachPhai, luyenDon, luyenCua, diemDaDung, dangNhapDem, thuongDN, dnCho, mauSat, gietQuai, roiMon, luyenKn, nhanChia, nhat, datBai, datChung, doiDo, banMon, coMon, tien, chet, lam, uong, hao, uyThacVe, uyThacDo, buffDem, buffCon, laHoan, CHIEU_SACH, thuUyThac, ghiDev, tenMon, giaBan, SLOT_OF, timMon, taoQua, monTin, tenBai, MAX_LEVEL, RXC, monRuongXanh, choRuongXanh, nhanRuongCho, BUA_MON, LUAT: { muaLai: { phut: MUA_LAI.phut, heSo: MUA_LAI.heSo }, sua: SUA, haoMon: +DB.haoMon || 0, vuKhi: VK, uyThac: { gioNgay: UT.gioNgay, tiLe: UT.tiLe, vangGiay: UT.vangGiay }, get dangNhap() { return { xu: DN.xu, phiTiep: DN.phiTiep }; }, ruongChuy: ((CFG.daTau || {}).ruong || {}).chuy ?? 6, ruongXanh: { soDong: RXC.soDong, oTrong: RXC.oTrong }, ruong: { moRong: RG.moRong }, tienTrang: { luongMotXu: TT.luongMotXu, luongBanXu: TT.luongBanXu, banXuNgay: TT.banXuNgay }, doiPhai: { cap: +((CFG.doiPhai || {}).cap) || 120, ngay: +((CFG.doiPhai || {}).ngay) || 7 }, kyNangPhai: CFG.kyNangPhai || null, choTroi: ((C) => { const t = C.thue ?? 20, b = Number.isFinite(+C.thueBan) ? +C.thueBan : t / 2; return { thue: t, thueBan: b, thueMua: Number.isFinite(+C.thueMua) ? +C.thueMua : t - b, cap: C.cap ?? 10 }; })(CFG.choTroi || {}), get thuongCap() { return ((CFG.thuongCap || {}).moc || []).map((m) => m.cap).filter((c) => c > 0).sort((a, b) => a - b); }, tanThu: CFG.tanThu || null, tangIchDoi: CFG.tangIchDoi || null, quaiChung: CFG.quaiChung ? { bai: (CFG.quaiChung.bai || []).map(Number), thuong: QC_THUONG, manh: CFG.quaiChung.manh || null } : null, satThu: { mau: (CFG.satThu && CFG.satThu.mau) || {}, dat: SAT_DAT }, chong: TC.chongToiDa, mua: TC.muaToiDa, mang: TC.mangToiDa || 60, banLai: TC.banLai, giaBan: CFG.giaBan, thieuCap: VB.thieuCap | 0, noiCong: +((CFG.noiCong || {}).phanTram) || 0, quaiVoCong: { ...(CFG.quaiVoCong || {}), bat: process.env.VL_QUAI_VO_CONG === "1" || !!(CFG.quaiVoCong || {}).bat }, voCong: (CFG.voCong && CFG.voCong.moPhai) || ["shaolin", "emei"], canBang: { trum: CAN_BANG.trum || null, soQuai: CAN_BANG.soQuai || null, tinhAnhMoi: QD.tinhAnhMoi, thuLinhMoi: QD.thuLinhMoi, ta: Object.fromEntries(Object.entries(RDB).map(([z, b]) => [z, { ten: b.ta.ten, mau: b.ta.mau, st: b.ta.st, ar: b.ta.ar, def: b.ta.def }])), bai: Object.fromEntries(Object.entries(CAN_BANG.bai || {}).map(([z, b]) => [z, { mau: b.mau, satThuong: b.satThuong, ...(b.chiSo ? { chiSo: b.chiSo } : {}), ...(b.soQuai ? { soQuai: b.soQuai } : {}), ...Object.fromEntries(["chinhXac", "neTranh", "capQuai", "mauThuLinh", "mauTinhAnh"].filter((k) => b[k] != null).map((k) => [k, b[k]])) }])) } } };
+module.exports = { muaLaiGui, MUA_LAI, NOI, thangSuKien, mobStats: MS, quaiCap: (lv) => (QUAI_CAP ? QUAI_CAP(lv) : null), knBai, baiNay, chuan, hamChieu, laLuyen, sachPhai, luyenDon, luyenCua, diemDaDung, dangNhapDem, thuongDN, dnCho, mauSat, gietQuai, roiMon, luyenKn, nhanChia, nhat, datBai, datChung, doiDo, banMon, coMon, tien, chet, lam, uong, hao, uyThacVe, uyThacDo, buffDem, buffCon, laHoan, CHIEU_SACH, thuUyThac, ghiDev, tenMon, giaBan, SLOT_OF, timMon, taoQua, monTin, tenBai, MAX_LEVEL, RXC, monRuongXanh, choRuongXanh, nhanRuongCho, BUA_MON, LUAT: { muaLai: { phut: MUA_LAI.phut, heSo: MUA_LAI.heSo }, sua: SUA, haoMon: +DB.haoMon || 0, vuKhi: VK, uyThac: { gioNgay: UT.gioNgay, tiLe: UT.tiLe, vangGiay: UT.vangGiay }, get dangNhap() { return { xu: DN.xu, phiTiep: DN.phiTiep }; }, ruongChuy: ((CFG.daTau || {}).ruong || {}).chuy ?? 6, ruongXanh: { soDong: RXC.soDong, oTrong: RXC.oTrong }, ruong: { moRong: RG.moRong }, tienTrang: { luongMotXu: TT.luongMotXu, luongBanXu: TT.luongBanXu, banXuNgay: TT.banXuNgay }, doiPhai: { cap: +((CFG.doiPhai || {}).cap) || 120, ngay: +((CFG.doiPhai || {}).ngay) || 7 }, kyNangPhai: CFG.kyNangPhai || null, choTroi: ((C) => { const t = C.thue ?? 20, b = Number.isFinite(+C.thueBan) ? +C.thueBan : t / 2; return { thue: t, thueBan: b, thueMua: Number.isFinite(+C.thueMua) ? +C.thueMua : t - b, cap: C.cap ?? 10 }; })(CFG.choTroi || {}), get thuongCap() { return ((CFG.thuongCap || {}).moc || []).map((m) => m.cap).filter((c) => c > 0).sort((a, b) => a - b); }, tanThu: CFG.tanThu || null, tangIchDoi: CFG.tangIchDoi || null, quaiChung: CFG.quaiChung ? { bai: (CFG.quaiChung.bai || []).map(Number), thuong: QC_THUONG, manh: CFG.quaiChung.manh || null } : null, satThu: { mau: (CFG.satThu && CFG.satThu.mau) || {}, dat: SAT_DAT }, chong: TC.chongToiDa, mua: TC.muaToiDa, mang: TC.mangToiDa || 60, banLai: TC.banLai, giaBan: CFG.giaBan, thieuCap: VB.thieuCap | 0, noiCong: +((CFG.noiCong || {}).phanTram) || 0, quaiVoCong: { ...(CFG.quaiVoCong || {}), bat: process.env.VL_QUAI_VO_CONG === "1" || !!(CFG.quaiVoCong || {}).bat }, voCong: (CFG.voCong && CFG.voCong.moPhai) || ["shaolin", "emei"], canBang: { trum: CAN_BANG.trum || null, soQuai: CAN_BANG.soQuai || null, tinhAnhMoi: QD.tinhAnhMoi, thuLinhMoi: QD.thuLinhMoi, ta: Object.fromEntries(Object.entries(RDB).map(([z, b]) => [z, { ten: b.ta.ten, mau: b.ta.mau, st: b.ta.st, ar: b.ta.ar, def: b.ta.def }])), bai: Object.fromEntries(Object.entries(CAN_BANG.bai || {}).map(([z, b]) => [z, { mau: b.mau, satThuong: b.satThuong, ...(b.chiSo ? { chiSo: b.chiSo } : {}), ...(b.soQuai ? { soQuai: b.soQuai } : {}), ...Object.fromEntries(["chinhXac", "neTranh", "capQuai", "mauThuLinh", "mauTinhAnh"].filter((k) => b[k] != null).map((k) => [k, b[k]])) }])) } } };

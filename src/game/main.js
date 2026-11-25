@@ -730,7 +730,7 @@ async function loadZone(zone, opt, L) {
   let atOpt = oDi(opt.at);
   if (atOpt && oVao && zone.bo && map.vung(atOpt[0], atOpt[1]) !== map.vung(oVao[0], oVao[1])) atOpt = null; // chỗ đứng cũ ở bờ kia sông: vào chỗ của bãi
   const docMang = opt.revive ? null : carryDoc();
-  const w = new World(P, map, zone, hero, { npcs, vcOpen: vcOpen(), canBang: luat().canBang, noiCong: luat().noiCong, kyNang: luat().kyNangPhai, quaiVC: luat().quaiVoCong, tanThu: luat().tanThu, buffs: opt.revive ? null : carryBuffs(), diem: diemQuai(zone), suKien: laThuyen(zone) || laAi(zone) || laVd(zone) || laPh(zone) || laTk(zone) || laLd(zone) || laDn(zone) || chung,
+  const w = new World(P, map, zone, hero, { npcs, vcOpen: vcOpen(), canBang: luat().canBang, noiCong: luat().noiCong, kyNang: luat().kyNangPhai, quaiVC: luat().quaiVoCong, tanThu: luat().tanThu, buffs: opt.revive ? null : carryBuffs(), diem: diemQuai(zone), spawnPoints: (P.maps.maps[zone.map] || {}).spawnPoints, suKien: laThuyen(zone) || laAi(zone) || laVd(zone) || laPh(zone) || laTk(zone) || laLd(zone) || laDn(zone) || chung,
     ...(opt.revive ? { at: atOpt || revivePoint(zone, map), hp: REVIVE_HP, rest: true } : { ...cur, ...(TOWN_KINDS.has(zone.kind) ? { at: revivePoint(zone, map) } : {}), ...(atVao ? { at: atVao } : {}), ...(atOpt ? { at: atOpt } : {}), ...(opt.rest ? { rest: true } : {}) }) });
   if (docMang) w.player.poison = docMang; // độc đang dính theo sang bản đồ mới (carryDoc)
   w.chung = chung; // bản quái chung: chỉ thấy người cùng bản (nhịp s.c — may-chu/the-gioi.js)
@@ -2465,8 +2465,8 @@ function themLeQuan(D) {
     m.t = "desc";
     m.text = [LE_QUAN + "Chào mừng bạn đến với <color=yellow>Võ Lâm Truyền Kỳ<color>!<enter>Ta lo việc ban thưởng của võ lâm: đại hiệp có <color=yellow>mã kích hoạt<color> thì nhập ở chỗ ta để nhận quà; quên mật mã rương chứa đồ thì tìm ta để mở pass rương; vật phẩm không cần nữa, kể cả vật phẩm <color=green>khóa bảo hiểm<color>, thì đưa ta hủy."];
     // anh 05/11: thêm "Hủy vật phẩm" (huyVatPham) trước "Kết thúc đối thoại"
-    m.opts = [["Nhập mã kích hoạt", "NhapMaKichHoat"], ...(m.opts || []).filter((x) => x[1] !== "NhapMaKichHoat" && x[1] !== "HuyVatPham" && x[1] != null).map(([t, f]) => [t, t === "Mở Pass Rương" ? "MoPassRuong" : f]),
-      ["Hủy vật phẩm", "HuyVatPham"], ["Kết thúc đối thoại", null]]; // anh 12/11: tâm thư (Esc → Ủng hộ tác giả)
+    m.opts = [["Nhập mã kích hoạt", "NhapMaKichHoat"], ...(m.opts || []).filter((x) => x[1] !== "NhapMaKichHoat" && x[1] !== "HuyVatPham" && x[1] !== "ThangSuKien" && x[1] != null).map(([t, f]) => [t, t === "Mở Pass Rương" ? "MoPassRuong" : f]),
+      ["Hủy vật phẩm", "HuyVatPham"], ["Sự kiện tháng", "ThangSuKien"], ["Kết thúc đối thoại", null]]; // anh 12/11: tâm thư (Esc → Ủng hộ tác giả)
   }
 }
 // Lễ quan → Hủy vật phẩm (anh 05/11: "thêm vào lễ quan 1 chức năng đó là hủy vật phẩm, có thể hủy tất cả các loại vật phẩm bao gồm khóa bảo
@@ -2502,6 +2502,47 @@ function huyVatPham() {
 // ":thoiGian" -> Promise trang kế cho NpcDialog (npcdlg.js show)
 const ngayXoaMk = (so) => { const s = String(so); return `${+s.slice(6, 8)}-${+s.slice(4, 6)}-${s.slice(0, 4)}`; };
 const henXoaMk = (so) => `Pass rương sẽ được xóa vào ngày <color=yellow>${ngayXoaMk(so)}<color><enter>Nếu sau 24h ngày <color=yellow>${ngayXoaMk(so)} <color>đại hiệp không xác nhận thì đăng ký xoá pass rương sẽ bị hủy bỏ!`;
+async function thangSuKienDlg(id) {
+  if (!hero || !world || world.zone.id !== 53) return { desc: 1, text: LE_QUAN + "Chỉ có thể tham gia sự kiện tháng tại Lễ quan ở Ba Lăng huyện.", opts: [["Thoát", null]] };
+  const h0 = hero, slot = h0.slot | 0, lai = [["Trở lại", "ThangSuKien"], ["Thoát", null]], parts = id.split(":"), act = parts[1] || "xem";
+  try {
+    let body = { o: slot, viec: "xem" }, viet = false;
+    if (act === "che" && parts[2]) { body = { o: slot, viec: "che", recipe: parts[2] }; viet = true; }
+    else if (act === "moc" && parts[2] && parts[3]) { body = { o: slot, viec: "moc", kind: parts[2], moc: Number(parts[3]) }; viet = true; }
+    const j = await Net.call("POST", "thang-su-kien", body);
+    if (hero !== h0 || !world || world.zone.id !== 53) return { close: true };
+    if (viet) applyServer(j);
+    if (j.msg) P.hud.msg(j.msg);
+    const sk = j.suKien || {}, noel = sk.noel || {}, tet = sk.tet || {};
+    const kinds = [...(noel.active ? ["noel"] : []), ...(tet.active ? ["tet"] : [])];
+    if (!kinds.length) return { desc: 1, text: LE_QUAN + "Hiện chưa có sự kiện tháng nào đang mở.", opts: [["Thoát", null]] };
+    const ten = { noel: "Giáng Sinh (Noel)", tet: "Tết (Bánh Chưng)" };
+    const cheOpts = (k) => (k === "noel"
+      ? [["Ghép Người tuyết", "ThangSuKien:che:noelThuong"], ["Ghép Người tuyết khăn xanh", "ThangSuKien:che:noelXanh"], ["Ghép Người tuyết khăn đỏ", "ThangSuKien:che:noelDo"]]
+      : [["Gói Bánh chưng thường (20.000 lượng)", "ThangSuKien:che:tetThuong"], ["Gói Bánh chưng hảo hạng", "ThangSuKien:che:tetHao"], ["Gói Bánh chưng thượng hạng", "ThangSuKien:che:tetThuongHang"], ["Mua Bí quyết hảo hạng (100.000 lượng)", "ThangSuKien:che:tetMuaBiQuyetHao"], ["Mua Bí quyết thượng hạng (200.000 lượng)", "ThangSuKien:che:tetMuaBiQuyetThuong"]]);
+    const mocOpts = (k, st) => [[1, 1000], [2, 1500], [3, 2000]]
+      .filter(([m, ng]) => (st.specialUsed | 0) >= ng && !(st.claimed && st.claimed[m]))
+      .map(([m, ng]) => [`Nhận thưởng mốc ${ng}`, `ThangSuKien:moc:${k}:${m}`]);
+    const tomTat = (k) => {
+      const st = sk[k] || {}, da = [1, 2, 3].filter((m) => st.claimed && st.claimed[m]).map((m) => [1000, 1500, 2000][m - 1]);
+      return `<enter><color=yellow>${ten[k]}<color>: đã dùng đặc biệt <color=yellow>${st.specialUsed | 0}<color>${da.length ? ` (đã nhận mốc ${da.join(", ")})` : ""}`;
+    };
+    const tin = j.msg ? `<enter><color=green>${j.msg}<color>` : "";
+    if (act === "menu" && (parts[2] === "noel" || parts[2] === "tet") && (sk[parts[2]] || {}).active) {
+      const k = parts[2];
+      return { desc: 1, text: LE_QUAN + `Sự kiện <color=yellow>${ten[k]}<color>:` + tomTat(k) + tin, opts: [...cheOpts(k), ...mocOpts(k, sk[k] || {}), ...(kinds.length > 1 ? [["Trở lại", "ThangSuKien"]] : []), ["Thoát", null]] };
+    }
+    if (kinds.length > 1 && act === "xem") {
+      return { desc: 1, text: LE_QUAN + "Sự kiện tháng đang mở:" + kinds.map(tomTat).join("") + tin, opts: [...kinds.map((k) => [ten[k], `ThangSuKien:menu:${k}`]), ["Thoát", null]] };
+    }
+    const k = (act === "che" && parts[2] && parts[2].startsWith("tet")) || (act === "moc" && parts[2] === "tet") ? "tet" : kinds[0];
+    const chon = (sk[k] || {}).active ? k : kinds[0];
+    return { desc: 1, text: LE_QUAN + `Sự kiện <color=yellow>${ten[chon]}<color>:` + tomTat(chon) + tin, opts: [...cheOpts(chon), ...mocOpts(chon, sk[chon] || {}), ...(kinds.length > 1 ? [["Chọn sự kiện khác", "ThangSuKien"]] : []), ["Thoát", null]] };
+  } catch (e) {
+    if (e.ma === "het-phien") return { close: true };
+    return { desc: 1, text: LE_QUAN + (e.message || "Không thực hiện được."), opts: lai };
+  }
+}
 function moPassRuong(id) {
   const viec = id.split(":")[1] || "xem", lai = [["Trở lại", "MoPassRuong"], ["Kết thúc đối thoại", null]];
   return Net.doItem(hero.slot | 0, { act: "xoaMk", viec: viec === "thoiGian" ? "xem" : viec }).then((j) => {
@@ -3572,6 +3613,7 @@ function chucNangFn(id, npc) {
   if (id === "NhapMaKichHoat") { nhapMaKichHoat(); return { close: true }; } // Lễ quan Ba Lăng (anh 29/10)
   if (id === "HuyVatPham") { huyVatPham(); return { close: true }; } // Lễ quan: hủy vật phẩm (anh 05/11)
   if (/^MoPassRuong(:|$)/.test(id)) return moPassRuong(id); // Lễ quan: xóa mật mã rương (anh 29/10 lần 3)
+  if (/^ThangSuKien(:|$)/.test(id)) return thangSuKienDlg(id); // Lễ quan: sự kiện tháng Noel / Tết
   if (id === "buy_addibox") {
     const gia = (L.ruong || {}).moRong || [], n = hero.ruongMo | 0;
     if (n >= gia.length) return { text: `Thẩm Cửu: Ngươi đã có đủ ${gia.length} rương mở rộng rồi, ta không còn chiếc nào nữa.`, opts: [["Đa tạ", null]] };

@@ -138,6 +138,7 @@ const DN = require("./dua-ngua"); // Truy Phong Đại Loạn Đấu — đua ng
 const NSK = require("./nguon-su-kien"); // anh 18/11 — nguồn nguyên liệu sự kiện (sườn dùng lại): nhiệm vụ ngày lễ (nvCua nsk)
 const BD = require("./bao-dap-an-su"); // anh 16/11 — Báo Đáp Ân Sư: /api/bao-dap-an-su, nhịp nhận Nến đồng đội, LUAT.baoDapAnSu (ngày mở / mở hương bao / cấp kỹ năng tối đa…)
 const KN = require("./kham-nam"); // anh 17/11 — khảm nạm Thủy tinh: /api/kham-nam (Thợ rèn Ba Lăng / Biện Kinh, Thương nhân thần bí), LUAT.khamNam (phí, tỉ lệ Tử, mã đá)
+const TSK = require("./thang-su-kien"); // Noel tháng 12 / Bánh Chưng tháng 1
 const TT = require("./ti-thi"); // anh 17/11 — tỉ thí: /api/ti-thi (chiến thư, nhận lời -> sân lôi đài 1 vs 1 miễn phí), nhịp ttMoi / ttVao, LUAT.tiThi (câu khịa, giờ)
 Object.defineProperty(DO.LUAT, "tkHoan", { enumerable: true, configurable: true, get: () => TKM.hoanGiay() }); // anh 17/11: giây tối đa của hoàn trong trận Tống Kim — trình duyệt ghi ở ô xem món
 const PACK = require("../assets/server.json");
@@ -155,7 +156,7 @@ const TEN_VH = /[\p{Cc}\p{Cf}\p{Default_Ignorable_Code_Point}\u2800]/u;
 const GIU = ["lvl", "exp", "gold", "xu", "bag", "equip", "looks", "uN", "locDo", "ruong", "tienRuong", "uyThac", "dangNhap", "ruongMo", "ruongPhu", "mkRuong", "khoa", "xoaMk",
   "books", "skMin", "kyNangThem", "tiemNangThem", "mt", "tt", "buff", "bch", "sachV", "tuiTM", "tmHet",
   "shxt", "daTau", "pld", "satThu", "dtc", "vuotAi", "va", "viemDe", "vd", "leadExp", "leadLv", "tayTuy", "quaTin", "luyen", "tlh", "onl", "pd", "thuongCap", "sap", "choTin", "sanNhim", "pq", "phiPhong", "mc", "tuLam", "rxCho", "rxDay", "rxMon", "ptChoK", "ptChoKhoa", "quaCho", "qtTin", "qtDi", "pt", "ptCho", "ptTin", "ptDay",
-  "diemTk", "tkNgay", "tkTin", "bcTin", "kbhMoTin", "doiPhai", "dpV", "dpLuc", "muaLai",
+  "diemTk", "tkNgay", "tkTin", "bcTin", "kbhMoTin", "doiPhai", "dpV", "dpLuc", "muaLai", "thangSuKien",
   "bhMa", "ldTin", "dnCho", "bdas", "ccKn", "nsk"]; // bdas / ccKn: Báo Đáp Ân Sư (anh 16/11 — may-chu/bao-dap-an-su.js): số trong ngày + kinh nghiệm hương bao cả sự kiện, cấp kỹ năng Nhất Kỷ / Càn khôn còn hạn. dnCho: đồ thưởng đua ngựa còn giữ (túi đầy lúc về đích — 16/11, may-chu/dua-ngua.js; nhận ở Truy Phong Sứ Giả). ldTin: câu báo hoàn phí Lôi Đài (15/11 — may-chu/loi-dai.js hoan ghi thẳng tệp, nhịp gửi). bhMa: dấu phiếu bang hội đã nhận / đã trừ (14/11 — bang hội đợt 2, may-chu/bang-hoi.js HĐ 8: thiếu ở đây thì trình duyệt lưu nhân vật làm mất dấu -> giao lại / hoàn nhầm). doiPhai: chờ bái nhập phái mới (chiêu 90 / 120 mang sang), dpV: lần đổi phái, dpLuc: lúc chuyển phái — mỗi tuần 1 lần (11/11 — may-chu/doi-phai.js). kbhMoTin: món khóa có hạn vừa mở khóa, chờ nhịp báo (11/11 — do.js chuan; soát: thiếu ở đây thì trình duyệt lưu nhân vật làm câu báo lặp mãi / mất). bcTin: câu báo tiền thắng Bầu Cua (10/11). Trường của nhân vật do máy chủ quyết (pt*: Phân Thân — 05/11; diemTk / tkNgay / tkTin: Tống Kim — điểm Tống Kim, Huân công bài trong ngày, câu báo thưởng cuối trận — 06/11) (dòng 2: sách / điểm / trạng thái từ Kỳ Trân Các — 27/10; dòng 3: hoạt động — mảnh Sơn Hà Xã Tắc, Dã Tẩu, Phong Lăng Độ, Boss Sát thủ, Vượt Ải; thống soái — tổ đội 28/10; quà quản trị chưa báo — 28/10; Thiết La Hán, Online nhận thưởng — 31/10; sạp chợ trời — 02/11; số con Săn Nhím Béo Phì trong ngày, số đã chọn Phú Quý Cẩm Hạp, Phi Phong đã khoác, nhiệm vụ Võ Lâm Minh Chủ, Trợ Thủ tự làm nhiệm vụ đã mở khóa — 03/11)
 const ATTR = ["str", "dex", "vit", "eng"];
 
@@ -801,6 +802,20 @@ async function xuLyApi(req, res, p) {
     }
     // Khảm nạm Thủy tinh (anh 17/11 — may-chu/kham-nam.js lam): kham ở Thợ rèn Ba Lăng / Biện Kinh, muaHl ở Thương nhân thần bí — đứng gần đúng NPC: npc-gan.js
     // (NG.chan ở trên); tt chỉ xem luật -> { ok?, loai?, u?, msg?, tin?, daiCat?, khamNam } + nhân vật / túi. kham tự ghi sổ hoạt động. Không await giữa đọc và ghi
+    if (p === "/api/thang-su-kien" && m === "POST") {
+      const h = oCua(tk, body), now = Date.now(), viec = String(body.viec || "xem");
+      if (viec === "xem") return guiJson(res, 200, { suKien: TSK.tomTat(h, now), nv: nvCua(h), tui: tuiCua(h) });
+      const view = { ...h, duCho: () => true };
+      const plan = viec === "che" ? TSK.che(view, body.recipe, now) : viec === "moc" ? TSK.moc(view, body.kind, body.moc, now) : null;
+      if (!plan || !plan.ok) return loi(res, 400, (plan && plan.msg) || "Việc sự kiện không hợp lệ");
+      const gan = NG.kiemGan(tk.ten, h, "leQuan");
+      if (!gan.ok || gan.zone !== 53) return loi(res, 400, "Hãy đứng gần Lễ quan ở Ba Lăng", "xa-npc");
+      DO.thangSuKien(h, plan, now); DO.chuan(h); D.ghiTk(tk);
+      const qua = plan.award.map((x) => `${x.n > 1 ? x.n + " " : ""}${DO.tenMon(x).trim()}`).join(", ");
+      const msg = viec === "che" ? `Chế tạo thành công: ${qua}` : `Nhận mốc ${plan.tier}: ${qua}`;
+      ghiHd("Sự kiện tháng", tk.ten, h.name, msg);
+      return guiJson(res, 200, { msg, suKien: TSK.tomTat(h, now), nv: nvCua(h), tui: tuiCua(h) });
+    }
     if (p === "/api/kham-nam" && m === "POST") {
       const h = oCua(tk, body), r = KN.lam(h, body, tk); DO.chuan(h); D.ghiTk(tk);
       if (r.msg && body.viec === "muaHl") NK.hd("mua", r.msg);
