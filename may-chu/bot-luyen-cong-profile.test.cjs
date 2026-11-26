@@ -289,12 +289,14 @@ describe("bot-luyen-cong profile & cast metadata", () => {
     assert.equal(bot0().lvl, 70);
     assert.equal(bot0().fac, "kunlun");
 
-    // Despawn clears state & profile, respawn rerolls
-    for (let t = killT + 200; t <= killT + 22000; t += 200) step(t);
+    // Despawn clears state & profile, respawn rerolls (last hit was at t=1000; 45s inactive + up to 8s exit)
+    for (let t = killT + 200; t <= 45800; t += 200) step(t);
+    assert.equal(P.botsSt.length, 1);
+    for (let t = 46000; t <= 54000; t += 200) step(t);
     assert.deepEqual(P.botsSt, []);
     assert.equal(P.doi, true);
 
-    const respawnStart = killT + 23000;
+    const respawnStart = 55000;
     P.botCtl.ghiDanh(respawnStart, "p1", 1);
     P.botCtl.ghiDanh(respawnStart + 500, "p1", 1);
     step(respawnStart + 3600);
@@ -368,9 +370,11 @@ describe("bot-luyen-cong profile & cast metadata", () => {
       assert.ok(lost >= 50 && lost % 50 === 0);
     }
 
-    // Despawn clears P.botsSt and sets P.doi = true
+    // Despawn clears P.botsSt and sets P.doi = true (last hit at t=1000; 45s inactive + up to 8s exit)
+    for (let t = 9200; t <= 45800; t += 200) step(t);
+    assert.equal(P.botsSt.length, 5);
     P.doi = false;
-    for (let t = 21200; t <= 28000; t += 200) step(t);
+    for (let t = 46000; t <= 54000; t += 200) step(t);
     assert.deepEqual(P.botsSt, []);
     assert.equal(P.doi, true);
   });

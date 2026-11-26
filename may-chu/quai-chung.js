@@ -108,7 +108,11 @@ function botMap319() {
         if (!_botMapLoi) { _botMapLoi = true; console.error("Bot luyện công 319: không dựng được map.grid"); }
         return null;
       }
-      _botMap = { walkable: (x, y) => gm.walkable(x, y) && !gm.an(x, y), clear: (ax, ay, bx, by) => gm.clear(ax, ay, bx, by) };
+      _botMap = {
+        walkable: (x, y) => gm.walkable(x, y) && !gm.an(x, y),
+        clear: (ax, ay, bx, by) => gm.clear(ax, ay, bx, by),
+        path: (ax, ay, bx, by) => gm.path(ax, ay, bx, by, 4000, 1.25),
+      };
       return _botMap;
     };
     try { return build(require("../src/game/map.js").GameMap); }
