@@ -47,7 +47,16 @@ function makeDeps(drawCalls = []) {
     P: {
       jx: {
         look(req) {
-          return { sex: req.sex || "m", parts: { body: 19, head: 19 }, key: `${req.sex || "m"}|basic` };
+          const safe = { sex: req.sex === "f" ? "f" : "m" };
+          for (const k of ["helm", "armor", "weapon", "mantle", "horse"]) {
+            if (req[k] != null) safe[k] = req[k];
+          }
+          return {
+            sex: safe.sex,
+            parts: { body: safe.armor || 19, head: safe.helm || 19 },
+            key: `${safe.sex}|${safe.helm ?? "basic"}|${safe.armor ?? "basic"}|${safe.weapon ?? ""}|${safe.mantle ?? ""}|${safe.horse ?? ""}`,
+            req: safe,
+          };
         },
         draw(_ctx, look, opt) {
           drawCalls.push({ kind: "jx", look, ...opt });
@@ -187,7 +196,12 @@ describe("bot-luyen-cong client rendering", () => {
     assert.equal(w.botLuyenCong.kind, "other");
     assert.equal(w.botLuyenCong.name, "Luyện công (NPC)");
     assert.equal(w.botLuyenCong.sex, "m");
-    assert.deepEqual(w.botLuyenCong.look, { sex: "m", parts: { body: 19, head: 19 }, key: "m|basic" });
+    assert.deepEqual(w.botLuyenCong.look, {
+      sex: "m",
+      parts: { body: 19, head: 19 },
+      key: "m|basic|basic|||",
+      req: { sex: "m" },
+    });
 
     assert.equal(w.others.size, 0);
     assert.equal(w.ptKhac.size, 0);
@@ -202,7 +216,7 @@ describe("bot-luyen-cong client rendering", () => {
     const texts = [];
     w.draw(makeCtx(texts), { x: 0, y: 0 }, 1280, 720);
 
-    const botDraws = draws.filter((d) => d.look.key === "m|basic" && d.x === 640 && d.y === 520);
+    const botDraws = draws.filter((d) => d.look.req.sex === "m" && d.x === 640 && d.y === 520);
     assert.equal(botDraws.length, 1);
     assert.ok(texts.some((t) => t.s === "Luyện công (NPC)"));
 
@@ -375,6 +389,106 @@ describe("bot-luyen-cong client rendering", () => {
     assert.equal(w.ptKhac.size, 0);
     assert.equal(w.npcs.length, 0);
     assert.equal(w.mobs.length, 0);
+
+    QuaiChung.ganWorld(null);
+  });
+
+  it("renders squad of up to 5 bots with distinct looks, per-ID cast dedup, cleanup/respawn, and drops invalid/duplicate/horse fields", async () => {
+    const { World, QuaiChung } = await loadMods();
+    const draws = [];
+    const w = makeWorld(World, 319, draws);
+    const chieuCalls = [];
+    w.chieuAo = (id, lv, e, pt) => {
+      chieuCalls.push({ id, lv, e, pt: [...pt] });
+    };
+    QuaiChung.ganWorld(w);
+
+    // Legacy single-bot payload compatibility (p.bot) still works alongside squad path
+    const wLegacy = makeWorld(World, 319);
+    QuaiChung.ganWorld(wLegacy);
+    QuaiChung.capNhat(makeSnap({ x: 610, y: 510, dir: 3, act: "stand", atkN: 0, lvl: 74, facName: "Cái Bang", sex: "m", look: { armor: 39, helm: 18, weapon: 27, mantle: 1 } }, { gio: 40000 }));
+    assert.equal(wLegacy.botLuyenCongList.size, 1);
+    assert.equal(wLegacy.botLuyenCong.name, "Luyện công · Cấp 74 (Cái Bang)");
+    assert.deepEqual(wLegacy.botLuyenCong.look.req, { sex: "m", helm: 18, armor: 39, weapon: 27, mantle: 1 });
+    QuaiChung.ganWorld(w);
+
+    const squad = [
+      { id: 101, x: 500, y: 500, dir: 0, act: "attack", atkN: 1, lvl: 71, fac: "shaolin", facName: "Thiếu Lâm", skillId: 19, skillLv: 10, sex: "m", look: { armor: 24, helm: 3, weapon: 23, mantle: 1, horse: 12 }, cast: { n: 1, x: 540, y: 520, at: 40000 } },
+      { id: 102, x: 560, y: 510, dir: 2, act: "attack", atkN: 1, lvl: 73, fac: "emei", facName: "Nga My", skillId: 88, skillLv: 12, sex: "f", look: { armor: 27, helm: 3, weapon: 21, mantle: 1 }, cast: { n: 1, x: 600, y: 530, at: 40000 } },
+      { id: 103, x: 620, y: 520, dir: 4, act: "stand", atkN: 0, lvl: 75, fac: "wudang", facName: "Võ Đang", skillId: 165, skillLv: 15, sex: "m", look: { armor: 27, helm: 6, weapon: 21, mantle: 1 } },
+      { id: 104, x: 680, y: 530, dir: 6, act: "run", atkN: 0, lvl: 77, fac: "cuiyan", facName: "Thúy Yên", skillId: 108, skillLv: 14, sex: "f", look: { armor: 42, helm: 21, weapon: 23, mantle: 1 } },
+      // Bad gear fields + horse should fall back safely without throwing or passing horse
+      { id: 105, x: 740, y: 540, dir: 7, act: "stand", atkN: 0, lvl: 79, fac: "kunlun", facName: "Côn Lôn", skillId: 182, skillLv: 16, sex: "x", look: { armor: -1, helm: "bad", weapon: 9999, mantle: NaN, horse: 5 } },
+      // Duplicate ID and 6th bot beyond max 5 must be ignored
+      { id: 101, x: 999, y: 999, dir: 1, act: "stand", atkN: 9, lvl: 80, facName: "Duplicate" },
+      { id: 106, x: 800, y: 550, dir: 1, act: "stand", atkN: 0, lvl: 80, facName: "Extra6" },
+      { id: 0, x: 820, y: 560, dir: 1, act: "stand", atkN: 0 },
+      { id: 107, x: NaN, y: 560, dir: 1, act: "stand", atkN: 0 },
+    ];
+
+    QuaiChung.capNhat(makeSnap(undefined, { bots: squad, gio: 40000 }));
+    assert.equal(w.botLuyenCongList.size, 5);
+    assert.equal(w.botLuyenCong, w.botLuyenCongList.get(101));
+    assert.equal(w.botLuyenCongList.has(106), false);
+    assert.equal(w.botLuyenCongList.has(107), false);
+
+    // Whitelisted bounded integer fields only, never horse, fallback for invalid look/sex
+    assert.deepEqual(w.botLuyenCongList.get(101).look.req, { sex: "m", helm: 3, armor: 24, weapon: 23, mantle: 1 });
+    assert.equal(w.botLuyenCongList.get(101).look.req.horse, undefined);
+    assert.deepEqual(w.botLuyenCongList.get(102).look.req, { sex: "f", helm: 3, armor: 27, weapon: 21, mantle: 1 });
+    assert.deepEqual(w.botLuyenCongList.get(105).look.req, { sex: "m" });
+    assert.equal(w.botLuyenCongList.get(105).sex, "m");
+
+    // Same cast.n=1 across distinct bot IDs (101 and 102) both play independently
+    assert.equal(chieuCalls.length, 2);
+    assert.equal(chieuCalls[0].e, w.botLuyenCongList.get(101));
+    assert.equal(chieuCalls[1].e, w.botLuyenCongList.get(102));
+
+    // Repeat cast.n=1 does not replay; new cast.n=1 on 103 plays while 101 stays deduped
+    const nextSnap = squad.slice(0, 5).map((b) => (b.id === 103
+      ? { ...b, act: "attack", atkN: 1, cast: { n: 1, x: 650, y: 540, at: 40200 } }
+      : { ...b }));
+    QuaiChung.capNhat(makeSnap(undefined, { bots: nextSnap, gio: 40200 }));
+    assert.equal(chieuCalls.length, 3);
+    assert.equal(chieuCalls[2].e, w.botLuyenCongList.get(103));
+
+    // Draw renders all 5 and keeps others/ptKhac/npcs/mobs unpolluted
+    w.update(0.05);
+    const texts = [];
+    w.draw(makeCtx(texts), { x: 0, y: 0 }, 1280, 720);
+    assert.equal(draws.length, 6); // 5 bots + 1 player
+    assert.ok(texts.some((t) => t.s === "Luyện công · Cấp 71 (Thiếu Lâm)"));
+    assert.ok(texts.some((t) => t.s === "Luyện công · Cấp 73 (Nga My)"));
+    assert.ok(texts.some((t) => t.s === "Luyện công · Cấp 75 (Võ Đang)"));
+    assert.ok(texts.some((t) => t.s === "Luyện công · Cấp 77 (Thúy Yên)"));
+    assert.ok(texts.some((t) => t.s === "Luyện công · Cấp 79 (Côn Lôn)"));
+    assert.equal(w.others.size, 0);
+    assert.equal(w.ptKhac.size, 0);
+
+    // Partial removal keeps surviving entity identity + castN; empty/world swap clears all
+    const e103 = w.botLuyenCongList.get(103);
+    QuaiChung.capNhat(makeSnap(undefined, { bots: [nextSnap[2]], gio: 40400 }));
+    assert.equal(w.botLuyenCongList.size, 1);
+    assert.equal(w.botLuyenCongList.get(103), e103);
+    assert.equal(w.botLuyenCong, e103);
+
+    QuaiChung.capNhat(makeSnap(undefined, { bots: [], gio: 40600 }));
+    assert.equal(w.botLuyenCongList.size, 0);
+    assert.equal(w.botLuyenCong, null);
+
+    // Respawn with new ID after empty cleanup starts fresh cast dedup
+    QuaiChung.capNhat(makeSnap(undefined, {
+      bots: [{ id: 201, x: 520, y: 520, dir: 0, act: "attack", atkN: 1, lvl: 72, facName: "Võ Đang", skillId: 165, skillLv: 15, sex: "m", look: { armor: 27, helm: 6, weapon: 21, mantle: 1 }, cast: { n: 1, x: 550, y: 550, at: 40800 } }],
+      gio: 40800,
+    }));
+    assert.equal(w.botLuyenCongList.size, 1);
+    assert.equal(chieuCalls.length, 4);
+
+    // World swap clears previous world's squad
+    const w2 = makeWorld(World, 320);
+    QuaiChung.ganWorld(w2);
+    assert.equal(w.botLuyenCongList.size, 0);
+    assert.equal(w.botLuyenCong, null);
 
     QuaiChung.ganWorld(null);
   });

@@ -49,7 +49,10 @@ export const QuaiChung = {
   laTo() { return !!(this.p && this.w && this.w.zone.id === this.p.bai); },
   laChu() { return this.laTo() && this.p.chu === this.w.hero.name; },
   ganWorld(w) {
-    if (this.w && this.w !== w && this.w.datBotLuyenCong) this.w.datBotLuyenCong(null);
+    if (this.w && this.w !== w) {
+      if (this.w.datBotLuyenCongList) this.w.datBotLuyenCongList(null);
+      else if (this.w.datBotLuyenCong) this.w.datBotLuyenCong(null);
+    }
     this.w = w; this.p = null; this.spec = null; this.mob = new Map(); this.vt = new Map(); this.qb = new Map(); this.dh = null; this.hpSv = new Map();
     this.cho.clear(); this.choPt.clear(); this.st.clear(); this.daTT.clear(); this.dan.clear(); this.gui = []; this.chuCu = null;
     this.demBoss = 0; this.demTA = 0;
@@ -76,7 +79,15 @@ export const QuaiChung = {
     if (p.hp) this.hpSv = new Map(p.hp); else for (const [u, v] of p.hd || []) this.hpSv.set(u, v); // hd: chỉ con đổi máu
     this.p = p;
     this.gui = this.gui.filter((g) => g.s > (p.ack | 0));
-    if (this.w.datBotLuyenCong) this.w.datBotLuyenCong(p.bai === 319 ? p.bot : null, p.gio);
+    if (p.bai !== 319) {
+      if (this.w.datBotLuyenCongList) this.w.datBotLuyenCongList(null, p.gio);
+      else if (this.w.datBotLuyenCong) this.w.datBotLuyenCong(null, p.gio);
+    } else if (Array.isArray(p.bots)) {
+      if (this.w.datBotLuyenCongList) this.w.datBotLuyenCongList(p.bots, p.gio);
+      else if (this.w.datBotLuyenCong) this.w.datBotLuyenCong(p.bots[0] || null, p.gio);
+    } else if (this.w.datBotLuyenCong) {
+      this.w.datBotLuyenCong(p.bot || null, p.gio);
+    }
     this.dat();
   },
 

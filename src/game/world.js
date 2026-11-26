@@ -310,7 +310,8 @@ export class World {
     this.tk = null; // Tống Kim: trạng thái trận khi mình ở trong trận (src/game/tongkim.js — bot, người phe kia, phe mình, máy chủ trận) | null
     this.bhMinh = null; // dòng bang trên đầu mình { nhan: "Tên bang(Chức)" } | null (anh 14/11 — main.js bhMinhApply)
     this.ptKhac = new Map(); // phân thân của người khác cùng bãi (setOthers mục pt — may-chu/the-gioi.js): chỉ vẽ, không vào others (mời đội, giao dịch, vòng sáng…)
-    this.botLuyenCong = null; // NPC luyện công thử nghiệm (zone 319 — quaichung.js datBotLuyenCong): chỉ vẽ, không vào others/ptKhac/npcs/mobs
+    this.botLuyenCongList = new Map(); // đội NPC luyện công (zone 319 — quaichung.js datBotLuyenCongList): id -> entity, tối đa 5, không vào others/ptKhac/npcs/mobs
+    this.botLuyenCong = null; // alias con đầu để tương thích test/caller cũ
     this.vongHan = new Map(); // vòng sáng hỗ trợ của mình còn tác dụng: mã -> { lv, het } (vongCapNhat)
     this.resting = !!opt.rest;
     // thiết lập bản đồ của client (assets/data/maplist.json): hệ quái tự động + tỉ lệ 5 hệ
@@ -657,20 +658,32 @@ export class World {
   }
   // mốc qua kênh tức thời (main.js Net.wsNghe("vt") — may-chu/the-gioi.js): người chưa thấy qua nhịp thì bỏ (nhịp tạo người, đồ mặc…)
   themMoc(name, tr) { const e = this.others.get(name); if (e && Array.isArray(tr)) this._moc(e, tr, false, true); }
-  datBotLuyenCong(bot, tsMs) {
-    if (!bot || typeof bot !== "object") { this.botLuyenCong = null; return; }
-    const { x, y, dir, act, atkN, lvl, facName, skillId, skillLv, cast } = bot;
-    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isInteger(dir) || dir < 0 || dir > 7) { this.botLuyenCong = null; return; }
-    if ((act !== "stand" && act !== "run" && act !== "attack") || !Number.isInteger(atkN) || atkN < 0) { this.botLuyenCong = null; return; }
-    let e = this.botLuyenCong;
+  _capNhatBotLuyenCongEntity(id, bot, tsMs, prev) {
+    const { x, y, dir, act, atkN, lvl, facName, skillId, skillLv, cast, sex, look } = bot;
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isInteger(dir) || dir < 0 || dir > 7) return null;
+    if ((act !== "stand" && act !== "run" && act !== "attack") || !Number.isInteger(atkN) || atkN < 0) return null;
+    const safeSex = sex === "f" ? "f" : "m";
+    const safeLookReq = { sex: safeSex };
+    if (look && typeof look === "object") {
+      for (const k of ["helm", "armor", "weapon", "mantle"]) {
+        const v = look[k];
+        if (Number.isInteger(v) && v >= 0 && v <= 999) safeLookReq[k] = v;
+      }
+    }
+    const lookKey = `${safeSex}|${safeLookReq.helm ?? ""}|${safeLookReq.armor ?? ""}|${safeLookReq.weapon ?? ""}|${safeLookReq.mantle ?? ""}`;
+    let e = prev;
     if (!e) {
-      e = this.botLuyenCong = {
-        kind: "other", name: "Luyện công (NPC)", sex: "m",
-        look: this.P.jx.look({ sex: "m" }),
+      e = {
+        kind: "other", id, name: "Luyện công (NPC)", sex: safeSex,
+        lookKey, look: this.P.jx.look(safeLookReq),
         x, y, dir, t: 0, act: "stand", atkN: 0,
         buf: [], gap: 0.1, lag: 0.2, off: 0, fight: false,
         castN: 0,
       };
+    } else if (e.lookKey !== lookKey) {
+      e.lookKey = lookKey;
+      e.sex = safeSex;
+      e.look = this.P.jx.look(safeLookReq);
     }
     const okLvl = Number.isInteger(lvl) && lvl >= 1 && lvl <= R.MAX_LEVEL;
     const fac = typeof facName === "string" ? facName.trim().slice(0, 32) : "";
@@ -695,6 +708,33 @@ export class World {
       e.castN = cast.n;
       this.chieuAo(skillId, skillLv, e, [cast.x, cast.y]);
     }
+    return e;
+  }
+  datBotLuyenCongList(bots, tsMs) {
+    if (!Array.isArray(bots) || !bots.length) {
+      this.botLuyenCongList.clear();
+      this.botLuyenCong = null;
+      return;
+    }
+    const next = new Map();
+    for (const bot of bots) {
+      if (next.size >= 5) break;
+      if (!bot || typeof bot !== "object") continue;
+      const id = bot.id;
+      if (!Number.isInteger(id) || id <= 0 || next.has(id)) continue;
+      const e = this._capNhatBotLuyenCongEntity(id, bot, tsMs, this.botLuyenCongList.get(id));
+      if (e) next.set(id, e);
+    }
+    this.botLuyenCongList = next;
+    this.botLuyenCong = next.values().next().value || null;
+  }
+  datBotLuyenCong(bot, tsMs) {
+    if (!bot || typeof bot !== "object") { this.datBotLuyenCongList(null, tsMs); return; }
+    const id = Number.isInteger(bot.id) && bot.id > 0 ? bot.id : 1;
+    const e = this._capNhatBotLuyenCongEntity(id, bot, tsMs, this.botLuyenCongList.get(id) || this.botLuyenCong);
+    if (!e) { this.datBotLuyenCongList(null, tsMs); return; }
+    this.botLuyenCongList = new Map([[id, e]]);
+    this.botLuyenCong = e;
   }
   // Đang dịch chuyển giữa 2 mốc thì chạy, hướng theo đường đi; đứng giữa 2 mốc thì theo động tác người đó báo (đứng / ngồi / chết / bị
   // đánh). Đòn mới (atkN đổi) đánh lại từ khung đầu, đánh hết đòn mới đổi động tác khác.
@@ -746,7 +786,7 @@ export class World {
     for (const n of this.npcs) n.t += dt;
     for (const e of this.others.values()) this.updateOther(e, dt);
     for (const e of this.ptKhac.values()) this.updateOther(e, dt);
-    if (this.botLuyenCong) this.updateOther(this.botLuyenCong, dt);
+    for (const e of this.botLuyenCongList.values()) this.updateOther(e, dt);
     if (this.phanThan.length) this.capNhatPhanThan(dt);
     for (const t of this.texts) { t.t += dt; t.y -= 38 * dt; }
     if (this.drops.length) this.updateDrops(dt);
@@ -1672,7 +1712,7 @@ export class World {
     const hien = this.nguoiHien(), anSap = !!this.P.settings.anSap;
     const nguoi = [...this.others.values()].filter((e) => (!hien || hien.has(e.name)) && (!e.an || this.thayAn(e))), ptK = hien ? [...this.ptKhac.values()].filter((e) => hien.has(e.chu)) : this.ptKhac.values();
     // Tống Kim: người phe kia (e.tkn) đã vẽ ở others — bỏ bản để chọn mục tiêu; bot chết quá 2,5 giây thì ẩn tới lúc hồi sinh
-    const list = [...this.mobs, ...this.dongMinh, ...(anSap ? this.npcs.filter((n) => !n.sap) : this.npcs), ...nguoi, ...ptK, ...this.phanThan, ...(this.botLuyenCong ? [this.botLuyenCong] : []), this.player].filter((e) => !e.tkn && !(e.tkb && !e.alive && e.deadT > 2.5) && !(AN.bot && e.tkb && !e.tkq) && !(AN.quan && e.tkq) && e.x > cam.x - 200 && e.x < cam.x + vw + 200 && e.y > cam.y - 60 && e.y < cam.y + vh + 250).sort((a, b) => a.y - b.y);
+    const list = [...this.mobs, ...this.dongMinh, ...(anSap ? this.npcs.filter((n) => !n.sap) : this.npcs), ...nguoi, ...ptK, ...this.phanThan, ...this.botLuyenCongList.values(), this.player].filter((e) => !e.tkn && !(e.tkb && !e.alive && e.deadT > 2.5) && !(AN.bot && e.tkb && !e.tkq) && !(AN.quan && e.tkq) && e.x > cam.x - 200 && e.x < cam.x + vw + 200 && e.y > cam.y - 60 && e.y < cam.y + vh + 250).sort((a, b) => a.y - b.y);
     // bóng tự vẽ cho quái mà hình client không vẽ sẵn bóng (npc.json types[k].shadow) — anh duyệt 23/10; tắt được trong Tùy chỉnh.
     // Vẽ trước mọi thân: bóng nằm trên mặt đất, không đè lên con khác.
     if (this.P.settings.mobShadow) for (const e of list) if (e.kind === "mob" && (!e.tkb || e.tkq) && !(this.P.npc.type(e.type) || {}).shadow) this.P.npc.drawShadow(ctx, e.type, this.mobDrawOpt(e)); // quân NPC Tống Kim (tkq): bóng như quái

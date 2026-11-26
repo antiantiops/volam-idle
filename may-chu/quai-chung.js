@@ -39,6 +39,20 @@ const BOT_SKILLS = [
   ["shaolin", 19], ["tianwang", 32], ["tangmen", 249], ["wudu", 71], ["emei", 88],
   ["cuiyan", 108], ["gaibang", 128], ["tianren", 148], ["wudang", 165], ["kunlun", 182],
 ];
+// ponytail: curated faction cosmetic outfits [sex, armor, helm, weapon], mantle 1, no horse; widen to random gear table when bot equips dynamic loot
+const BOT_OUTFITS = {
+  shaolin: { sex: "m", look: { armor: 24, helm: 3, weapon: 23, mantle: 1 } },
+  tianwang: { sex: "m", look: { armor: 36, helm: 15, weapon: 23, mantle: 1 } },
+  tangmen: { sex: "m", look: { armor: 33, helm: 12, weapon: 20, mantle: 1 } },
+  wudu: { sex: "m", look: { armor: 30, helm: 9, weapon: 23, mantle: 1 } },
+  emei: { sex: "f", look: { armor: 27, helm: 3, weapon: 21, mantle: 1 } },
+  cuiyan: { sex: "f", look: { armor: 42, helm: 21, weapon: 23, mantle: 1 } },
+  gaibang: { sex: "m", look: { armor: 39, helm: 18, weapon: 27, mantle: 1 } },
+  tianren: { sex: "m", look: { armor: 30, helm: 15, weapon: 25, mantle: 1 } },
+  wudang: { sex: "m", look: { armor: 27, helm: 6, weapon: 21, mantle: 1 } },
+  kunlun: { sex: "m", look: { armor: 42, helm: 12, weapon: 21, mantle: 1 } },
+};
+const BOT_OUTFIT_DEFAULT = { sex: "m", look: { armor: 19, helm: 19, weapon: 1, mantle: 1 } };
 let _botMod = null, _botMap = undefined, _botMapLoi = false, _botMapWait = false, _botCat = undefined;
 function botCatalogs(load = (p) => require(p)) {
   if (_botCat !== undefined) return _botCat;
@@ -53,9 +67,13 @@ function botPickLevel(z, rng = Math.random) {
   const lo = Math.max(1, Math.floor(+((z && z.lo)) || 70)), hi = Math.max(lo, Math.floor(+((z && z.hi)) || lo));
   return lo + Math.min(hi - lo, Math.floor(Math.max(0, Math.min(0.999999999999, r)) * (hi - lo + 1)));
 }
-function botRollProfile(z, cat, rng = Math.random, curated = BOT_SKILLS) {
+function botOutfitFor(fac) {
+  const p = (fac && BOT_OUTFITS[fac]) || BOT_OUTFIT_DEFAULT;
+  return { sex: p.sex, look: { ...p.look } };
+}
+function botRollProfile(z, cat, rng = Math.random, curated = BOT_SKILLS, excludeFacs = null) {
   const lvl = botPickLevel(z, rng);
-  if (!cat || !Array.isArray(cat.factions) || !cat.skills || !cat.vcSk) return { lvl };
+  if (!cat || !Array.isArray(cat.factions) || !cat.skills || !cat.vcSk) return { lvl, ...botOutfitFor(null) };
   const facByKey = new Map(cat.factions.map((f) => [f && f.key, f]));
   const cands = [];
   for (const [key, id] of curated) {
@@ -63,11 +81,13 @@ function botRollProfile(z, cat, rng = Math.random, curated = BOT_SKILLS) {
     const req = Math.max(1, Number(sk && sk.req) || 1);
     if (!f || !Array.isArray(f.skills) || !f.skills.includes(id) || !sk || !vc || req > lvl) continue;
     const maxLv = Math.max(1, Number(sk.max) || 20);
-    cands.push({ lvl, fac: f.key, facName: f.n || f.key, skillId: id, skillLv: Math.max(1, Math.min(maxLv, lvl - req + 1)) });
+    cands.push({ lvl, fac: f.key, facName: f.n || f.key, skillId: id, skillLv: Math.max(1, Math.min(maxLv, lvl - req + 1)), ...botOutfitFor(f.key) });
   }
-  if (!cands.length) return { lvl };
+  if (!cands.length) return { lvl, ...botOutfitFor(null) };
+  const filtered = excludeFacs && excludeFacs.size ? cands.filter((c) => !excludeFacs.has(c.fac)) : cands;
+  const pool = filtered.length ? filtered : cands;
   const rv = rng(), r = Number.isFinite(rv) ? rv : 0;
-  return cands[Math.min(cands.length - 1, Math.floor(Math.max(0, Math.min(0.999999999999, r)) * cands.length))];
+  return pool[Math.min(pool.length - 1, Math.floor(Math.max(0, Math.min(0.999999999999, r)) * pool.length))];
 }
 function botMap319() {
   if (_botMap !== undefined) return _botMap;
@@ -111,12 +131,19 @@ function botMap319() {
 }
 function botTao() {
   if (!BOT_BAT) return null;
-  try { _botMod = _botMod || require("./bot-luyen-cong.js").taoBotLuyenCong; return _botMod(); }
+  try { _botMod = _botMod || require("./bot-luyen-cong.js").taoDoiLuyenCong; return _botMod(); }
   catch (e) { if (!_botMapLoi) { _botMapLoi = true; console.error("Bot luyện công 319:", e.message); } return null; }
 }
 const botCastKhac = (a, b) => (!a && !b) ? false : (!a || !b) ? true : a.n !== b.n || a.x !== b.x || a.y !== b.y || a.at !== b.at;
-const botProfKhac = (a, b) => (!a && !b) ? false : (!a || !b) ? true : a.lvl !== b.lvl || a.fac !== b.fac || a.facName !== b.facName || a.skillId !== b.skillId || a.skillLv !== b.skillLv;
-const botKhac = (cu, moi) => (!cu && !moi) ? false : (!cu || !moi) ? true : cu.x !== moi.x || cu.y !== moi.y || cu.dir !== moi.dir || cu.act !== moi.act || cu.atkN !== moi.atkN || botProfKhac(cu, moi) || botCastKhac(cu.cast, moi.cast);
+const botLookKhac = (a, b) => (!a && !b) ? false : (!a || !b) ? true : a.armor !== b.armor || a.helm !== b.helm || a.weapon !== b.weapon || a.mantle !== b.mantle;
+const botProfKhac = (a, b) => (!a && !b) ? false : (!a || !b) ? true : a.lvl !== b.lvl || a.fac !== b.fac || a.facName !== b.facName || a.skillId !== b.skillId || a.skillLv !== b.skillLv || a.sex !== b.sex || botLookKhac(a.look, b.look);
+const botItemKhac = (cu, moi) => (!cu && !moi) ? false : (!cu || !moi) ? true : cu.id !== moi.id || cu.x !== moi.x || cu.y !== moi.y || cu.dir !== moi.dir || cu.act !== moi.act || cu.atkN !== moi.atkN || botProfKhac(cu, moi) || botCastKhac(cu.cast, moi.cast);
+function botKhac(cu, moi) {
+  const a = Array.isArray(cu) ? cu : [], b = Array.isArray(moi) ? moi : [];
+  if (a.length !== b.length) return true;
+  for (let i = 0; i < a.length; i++) if (botItemKhac(a[i], b[i])) return true;
+  return false;
+}
 function botBuoc(P, M, t, opts) {
   if (!P || (!opts && (!BOT_BAT || P.bai !== BOT_Z)) || !P.botCtl) return;
   const o = opts || {};
@@ -140,34 +167,59 @@ function botBuoc(P, M, t, opts) {
     const x = v && Number.isFinite(v[0]) ? v[0] : m.x, y = v && Number.isFinite(v[1]) ? v[1] : m.y;
     quai.push({ uid: m.uid, x, y, mau: m.mau, mauMax: m.mauMax, boss: m.boss, ta: m.ta, sat: m.sat, dmg: m.dmg });
   }
-  const hadBot = !!P.botSt;
-  const hitUid = P.botCtl.tick(t, nguoi, quai, map);
-  const raw = P.botCtl.trangThai();
-  if (!raw) {
-    P.botProf = null; P.botCast = null;
-    if (P.botSt !== null) { P.botSt = null; P.doi = true; }
+  const prevById = new Map();
+  for (const b of Array.isArray(P.botsSt) ? P.botsSt : []) {
+    if (b && b.id != null) prevById.set(b.id, b);
+  }
+  const strikesRaw = P.botCtl.tick(t, nguoi, quai, map);
+  const rawList = P.botCtl.trangThai();
+  if (!Array.isArray(rawList) || rawList.length === 0) {
+    if (P.botsSt && P.botsSt.length) { P.botsSt = []; P.doi = true; }
     return;
   }
-  if (!hadBot || !P.botProf) P.botProf = botRollProfile(z, loadCat(), rng);
-  if (P.botCast && t - P.botCast.at >= BOT_CAST_MS) P.botCast = null;
-  let killMob = null;
-  if (hitUid != null) {
-    const m = P.q.get(hitUid);
-    if (m && m.mau > 0 && !m.boss && !m.ta && !m.sat && m.dmg.size === 0 && (!m.danhLuc || t - m.danhLuc >= 12000)) {
-      const v = P.vt.get(m.uid);
-      const tx = v && Number.isFinite(v[0]) ? v[0] : m.x, ty = v && Number.isFinite(v[1]) ? v[1] : m.y;
-      P.botCast = { n: raw.atkN, x: Math.round(tx), y: Math.round(ty), at: t };
-      const dmg = Math.max(1, Math.floor(m.mauMax * 0.05));
-      m.mau = Math.max(0, m.mau - dmg);
-      P.hpDoi.add(m.uid); P.doi = true;
-      if (m.mau <= 0) killMob = m;
-    }
+  const cat = loadCat();
+  const usedFacs = new Set();
+  for (const raw of rawList) {
+    const prev = prevById.get(raw.id);
+    if (prev && prev.fac) usedFacs.add(prev.fac);
   }
-  const st = { ...raw, ...P.botProf, ...(P.botCast ? { cast: P.botCast } : {}) };
-  if (botKhac(P.botSt, st)) { P.botSt = st; P.doi = true; }
-  if (killMob) {
-    if (o.onKill) o.onKill(killMob);
-    else { chet(P, killMob); phat(P); }
+  const strikeById = new Map();
+  for (const s of Array.isArray(strikesRaw) ? strikesRaw : []) {
+    if (s && s.id != null && s.uid != null && !strikeById.has(s.id)) strikeById.set(s.id, s.uid);
+  }
+  const hitUids = new Set();
+  const killMobs = [];
+  const nextList = [];
+  for (const raw of rawList) {
+    const prev = prevById.get(raw.id);
+    let prof;
+    if (prev && prev.lvl != null) {
+      prof = { lvl: prev.lvl, ...(prev.fac ? { fac: prev.fac, facName: prev.facName, skillId: prev.skillId, skillLv: prev.skillLv } : {}), sex: prev.sex, look: { ...prev.look } };
+    } else {
+      prof = botRollProfile(z, cat, rng, BOT_SKILLS, usedFacs);
+      if (prof.fac) usedFacs.add(prof.fac);
+    }
+    let cast = prev && prev.cast && t - prev.cast.at < BOT_CAST_MS ? prev.cast : null;
+    const hitUid = strikeById.get(raw.id);
+    if (hitUid != null && !hitUids.has(hitUid)) {
+      hitUids.add(hitUid);
+      const m = P.q.get(hitUid);
+      if (m && m.mau > 0 && !m.boss && !m.ta && !m.sat && m.dmg.size === 0 && (!m.danhLuc || t - m.danhLuc >= 12000)) {
+        const v = P.vt.get(m.uid);
+        const tx = v && Number.isFinite(v[0]) ? v[0] : m.x, ty = v && Number.isFinite(v[1]) ? v[1] : m.y;
+        cast = { n: raw.atkN, x: Math.round(tx), y: Math.round(ty), at: t };
+        const dmg = Math.max(1, Math.floor(m.mauMax * 0.05));
+        m.mau = Math.max(0, m.mau - dmg);
+        P.hpDoi.add(m.uid); P.doi = true;
+        if (m.mau <= 0) killMobs.push(m);
+      }
+    }
+    nextList.push({ ...raw, ...prof, ...(cast ? { cast } : {}) });
+  }
+  if (botKhac(P.botsSt, nextList)) { P.botsSt = nextList; P.doi = true; }
+  if (killMobs.length) {
+    if (o.onKill) { for (const km of killMobs) o.onKill(km); }
+    else { for (const km of killMobs) chet(P, km); phat(P); }
   }
 }
 // quái bản chung mạnh hơn (anh 03/11 "bãi quái chung quái mạnh hơn 50% bao gồm cả tần suất tấn công" — cau-hinh.json quaiChung.manh): máu nhân ở
@@ -191,7 +243,7 @@ function phong(bai) {
   let P = PH.get(bai);
   if (!P) {
     P = { bai, q: new Map(), vt: new Map(), trong: new Map(), song: new Map(), an: new Set(), chu: null, ack: new Map(), han: new Map(), dan: new Map(),
-      seq: 0, sv: 0, daSpec: new Map(), doi: true, guiLuc: 0, rong: 0, hpDoi: new Set(), hpLuc: 0, nk: [], ...(BOT_BAT && bai === BOT_Z ? { botCtl: botTao(), botSt: null, botProf: null, botCast: null } : {}) };
+      seq: 0, sv: 0, daSpec: new Map(), doi: true, guiLuc: 0, rong: 0, hpDoi: new Set(), hpLuc: 0, nk: [], ...(BOT_BAT && bai === BOT_Z ? { botCtl: botTao(), botsSt: [] } : {}) };
     PH.set(bai, P);
   }
   return P;
@@ -229,7 +281,7 @@ function doiDs(P, e) {
 function trangThai(P, tk, full, dan, hd, qd) {
   return { bai: P.bai, chu: P.trong.get(P.chu) || null, tv: [...P.trong.values()], cap: capP(P), sv: P.sv,
     ...(hd ? { hd } : { hp: [...P.q.values()].map(mauCua) }), dan, ack: P.ack.get(tk) || 0, gio: Date.now(), ...(qd ? { qd } : {}),
-    ...(BOT_BAT && P.bai === BOT_Z && "botSt" in P ? { bot: P.botSt } : {}),
+    ...(BOT_BAT && P.bai === BOT_Z && "botsSt" in P ? { bots: P.botsSt } : {}),
     ...(full ? { q: [...P.q.values()].map(dongQ), vt: [...P.vt].map(([u, v]) => [u, ...v]) } : {}) };
 }
 // gửi trạng thái cho cả bãi: người có bản danh sách mà nhật ký còn giữ đủ từ đó -> chỉ phần đổi (qd); người mới / bản quá cũ -> đủ danh sách
@@ -430,4 +482,4 @@ function nhanThuong(h, tk, key, admin) {
   return out.kn || out.nhan.length || out.roi.length || out.tin.length ? out : null;
 }
 
-module.exports = { bat, danh, nhanThuong, nvSat, BAI, _bot: { BOT_SKILLS, botCatalogs, botPickLevel, botRollProfile, botBuoc, botKhac } };
+module.exports = { bat, danh, nhanThuong, nvSat, BAI, _bot: { BOT_SKILLS, BOT_OUTFITS, BOT_OUTFIT_DEFAULT, botCatalogs, botPickLevel, botRollProfile, botBuoc, botKhac } };

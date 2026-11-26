@@ -1,7 +1,7 @@
 "use strict";
 
 // Bot luyện công thử nghiệm (chỉ logic máy chủ, chưa gắn vào luồng phòng):
-// một NPC thân thiện phụ đánh quái thường quanh điểm neo cố định ở bãi chung Lâm Du Quan (319)
+// một NPC hoặc đội tối đa 5 NPC thân thiện phụ đánh quái thường quanh điểm neo cố định ở bãi chung Lâm Du Quan (319)
 // sau khi người chơi thật đánh nhau liên tục, nhường mục tiêu của người chơi và tự rời đi khi yên ắng.
 //
 // Quy ước hướng 8 chiều khớp src/dir.js (dirOf):
@@ -22,6 +22,8 @@ const ATK_ANIM_MS = 450;
 
 const SPAWN_RADII = [160, 200, 120, 240, 88, 280];
 const SPAWN_DIRS = 16;
+const SQUAD_MAX_BOTS = 5;
+const SLOT_ANGLE_OFFSETS = [0, 1, -1, 2, -2];
 const PLAYER_CLEAR_DIST = 56;
 const SUBSTEP_PX = 12;
 const ARRIVE_EPS = 6;
@@ -96,7 +98,55 @@ function playerOverlap(x, y, livePlayers) {
   return false;
 }
 
-function pickAnchorAndSpawn(hits, livePlayers, map) {
+function pointOverlap(x, y, livePlayers, extraPoints) {
+  if (playerOverlap(x, y, livePlayers)) return true;
+  if (extraPoints) {
+    for (const pt of extraPoints) {
+      if (Math.hypot(x - pt.x, y - pt.y) < PLAYER_CLEAR_DIST) return true;
+    }
+  }
+  return false;
+}
+
+function pickSpawnsAtAnchor(anchor, livePlayers, map, maxBots) {
+  if (maxBots === 1) {
+    for (const r of SPAWN_RADII) {
+      for (let k = 0; k < SPAWN_DIRS; k++) {
+        const a = (k * 2 * Math.PI) / SPAWN_DIRS;
+        const sx = Math.round(anchor.x + Math.cos(a) * r);
+        const sy = Math.round(anchor.y + Math.sin(a) * r);
+        if (!safeWalkable(map, sx, sy) || pointOverlap(sx, sy, livePlayers)) continue;
+        if (safeClear(map, anchor.x, anchor.y, sx, sy)) return [{ x: sx, y: sy }];
+      }
+    }
+    return [];
+  }
+
+  const spawns = [];
+  const sectorStep = (2 * Math.PI) / maxBots;
+  const offsetRad = Math.PI / (maxBots * 2.5);
+  for (let slot = 0; slot < maxBots; slot++) {
+    const baseAngle = slot * sectorStep;
+    let found = null;
+    for (const r of SPAWN_RADII) {
+      for (const mult of SLOT_ANGLE_OFFSETS) {
+        const a = baseAngle + mult * offsetRad;
+        const sx = Math.round(anchor.x + Math.cos(a) * r);
+        const sy = Math.round(anchor.y + Math.sin(a) * r);
+        if (!safeWalkable(map, sx, sy) || pointOverlap(sx, sy, livePlayers, spawns)) continue;
+        if (safeClear(map, anchor.x, anchor.y, sx, sy)) {
+          found = { x: sx, y: sy };
+          break;
+        }
+      }
+      if (found) break;
+    }
+    if (found) spawns.push(found);
+  }
+  return spawns;
+}
+
+function pickAnchorAndSpawns(hits, livePlayers, map, maxBots) {
   const seen = new Set();
   for (let i = hits.length - 1; i >= 0; i--) {
     const tk = hits[i].tk;
@@ -105,27 +155,21 @@ function pickAnchorAndSpawn(hits, livePlayers, map) {
     const p = livePlayers.get(tk);
     if (!p || !safeWalkable(map, p.x, p.y)) continue;
 
-    for (const r of SPAWN_RADII) {
-      for (let k = 0; k < SPAWN_DIRS; k++) {
-        const a = (k * 2 * Math.PI) / SPAWN_DIRS;
-        const sx = Math.round(p.x + Math.cos(a) * r);
-        const sy = Math.round(p.y + Math.sin(a) * r);
-        if (!safeWalkable(map, sx, sy) || playerOverlap(sx, sy, livePlayers)) continue;
-        if (safeClear(map, p.x, p.y, sx, sy)) {
-          return { anchor: { x: p.x, y: p.y }, spawn: { x: sx, y: sy } };
-        }
-      }
+    const spawns = pickSpawnsAtAnchor(p, livePlayers, map, maxBots);
+    if (spawns.length > 0) {
+      return { anchor: { x: p.x, y: p.y }, spawns };
     }
   }
   return null;
 }
 
-function taoBotLuyenCong() {
+function taoBoDieuKhien(maxBots = 1) {
   const hits = []; // [{ t, tk, uid }]
   const humanHitUids = new Map(); // uid -> t
   let lastHumanUid = null;
-  let bot = null;
+  const bots = [];
   let prevTickT = null;
+  let nextBotId = 1;
 
   function pruneHitsByTime(t) {
     while (hits.length && t - hits[0].t >= INACTIVE_MS) hits.shift();
@@ -141,9 +185,11 @@ function taoBotLuyenCong() {
     if (!Number.isFinite(t) || typeof tk !== "string" || !tk || !isValidUid(uid)) return;
     pruneHitsByTime(t);
 
-    if (bot && !bot.exiting && bot.targetUid === uid) {
-      bot.targetUid = null;
-      if (bot.act === "attack") bot.act = "stand";
+    for (const b of bots) {
+      if (!b.exiting && b.targetUid === uid) {
+        b.targetUid = null;
+        if (b.act === "attack") b.act = "stand";
+      }
     }
 
     lastHumanUid = uid;
@@ -160,7 +206,9 @@ function taoBotLuyenCong() {
 
     if (hits.length >= MAX_HITS) hits.splice(1, 1); // giữ mốc đầu đợt đánh, chặn rò rỉ bộ nhớ
     hits.push({ t, tk, uid });
-    if (bot && !bot.exiting) bot.lastCombatHitAt = t;
+    for (const b of bots) {
+      if (!b.exiting) b.lastCombatHitAt = t;
+    }
   }
 
   function isMobEligible(m, botState, map) {
@@ -171,9 +219,10 @@ function taoBotLuyenCong() {
     return safeWalkable(map, m.x, m.y) && safeClear(map, botState.x, botState.y, m.x, m.y);
   }
 
-  function pickTarget(liveMobs, botState, map) {
+  function pickTarget(liveMobs, botState, map, reserved) {
     let best = null, bestDist = Infinity;
     for (const m of liveMobs.values()) {
+      if (reserved && reserved.has(m.uid)) continue;
       if (!isMobEligible(m, botState, map)) continue;
       const d = Math.hypot(m.x - botState.x, m.y - botState.y);
       if (d < bestDist || (d === bestDist && best && String(m.uid) < String(best.uid))) {
@@ -184,7 +233,7 @@ function taoBotLuyenCong() {
   }
 
   function tick(t, nguoi, quai, map) {
-    if (!Number.isFinite(t)) return null;
+    if (!Number.isFinite(t)) return [];
     const prevT = prevTickT;
     if (prevTickT === null || t > prevTickT) prevTickT = t;
 
@@ -218,109 +267,171 @@ function taoBotLuyenCong() {
     if (lastHumanUid !== null && !liveMobs.has(lastHumanUid)) lastHumanUid = null;
 
     const okMap = mapValid(map);
+    let justSpawned = false;
 
-    if (!bot) {
-      if (!okMap || livePlayers.size === 0) return null;
-      if (hits.length < MIN_HITS || t - hits[0].t < DELAY_MS) return null;
-      const chosen = pickAnchorAndSpawn(hits, livePlayers, map);
-      if (!chosen) return null;
-      bot = {
-        x: chosen.spawn.x,
-        y: chosen.spawn.y,
-        dir: dirOf(chosen.anchor.x - chosen.spawn.x, chosen.anchor.y - chosen.spawn.y),
-        act: "stand",
-        atkN: 0,
-        anchor: chosen.anchor,
-        spawn: chosen.spawn,
-        targetUid: null,
-        lastAtkAt: -Infinity,
-        atkAnimUntil: -Infinity,
-        lastCombatHitAt: hits[hits.length - 1].t,
-        exiting: false,
-        exitStartedAt: 0,
-      };
-    } else if (!bot.exiting && hits.length === 0) {
-      bot.exiting = true;
-      bot.targetUid = null;
-      bot.exitStartedAt = Math.min(t, bot.lastCombatHitAt + INACTIVE_MS);
-    }
-
-    if (bot.exiting) {
-      if (t - bot.exitStartedAt >= EXIT_MAX_MS) { bot = null; return null; }
-      const dSpawn = Math.hypot(bot.spawn.x - bot.x, bot.spawn.y - bot.y);
-      if (dSpawn <= ARRIVE_EPS) { bot = null; return null; }
-      if (!okMap) { bot = null; return null; }
-
-      const moveFrom = prevT === null ? bot.exitStartedAt : Math.max(prevT, bot.exitStartedAt);
-      const dtSec = Math.max(0, t - moveFrom) / 1000;
-      const step = stepStraight(map, bot.x, bot.y, bot.spawn.x, bot.spawn.y, RUN_SPEED * dtSec);
-      bot.x = step.x;
-      bot.y = step.y;
-      if (Math.hypot(bot.spawn.x - bot.x, bot.spawn.y - bot.y) <= ARRIVE_EPS) { bot = null; return null; }
-      if (step.moved) {
-        bot.dir = dirOf(bot.spawn.x - bot.x, bot.spawn.y - bot.y);
-        bot.act = "run";
-      } else {
-        bot = null;
+    if (bots.length === 0) {
+      if (!okMap || livePlayers.size === 0) return [];
+      if (hits.length < MIN_HITS || t - hits[0].t < DELAY_MS) return [];
+      const chosen = pickAnchorAndSpawns(hits, livePlayers, map, maxBots);
+      if (!chosen) return [];
+      const lastHitAt = hits[hits.length - 1].t;
+      for (const sp of chosen.spawns) {
+        bots.push({
+          id: nextBotId++,
+          x: sp.x,
+          y: sp.y,
+          dir: dirOf(chosen.anchor.x - sp.x, chosen.anchor.y - sp.y),
+          act: "stand",
+          atkN: 0,
+          anchor: chosen.anchor,
+          spawn: sp,
+          targetUid: null,
+          lastAtkAt: -Infinity,
+          atkAnimUntil: -Infinity,
+          lastCombatHitAt: lastHitAt,
+          exiting: false,
+          exitStartedAt: 0,
+        });
       }
-      return null;
+      justSpawned = true;
+    } else if (hits.length === 0) {
+      for (const b of bots) {
+        if (!b.exiting) {
+          b.exiting = true;
+          b.targetUid = null;
+          b.exitStartedAt = Math.min(t, b.lastCombatHitAt + INACTIVE_MS);
+        }
+      }
     }
+
+    const activeBots = [];
+    for (let i = 0; i < bots.length; i++) {
+      const b = bots[i];
+      if (!b.exiting) {
+        activeBots.push(b);
+        continue;
+      }
+      if (t - b.exitStartedAt >= EXIT_MAX_MS || !okMap) {
+        bots.splice(i--, 1);
+        continue;
+      }
+      const dSpawn = Math.hypot(b.spawn.x - b.x, b.spawn.y - b.y);
+      if (dSpawn <= ARRIVE_EPS) {
+        bots.splice(i--, 1);
+        continue;
+      }
+      const moveFrom = prevT === null ? b.exitStartedAt : Math.max(prevT, b.exitStartedAt);
+      const dtSec = Math.max(0, t - moveFrom) / 1000;
+      const step = stepStraight(map, b.x, b.y, b.spawn.x, b.spawn.y, RUN_SPEED * dtSec);
+      b.x = step.x;
+      b.y = step.y;
+      if (Math.hypot(b.spawn.x - b.x, b.spawn.y - b.y) <= ARRIVE_EPS) {
+        bots.splice(i--, 1);
+        continue;
+      }
+      if (step.moved) {
+        b.dir = dirOf(b.spawn.x - b.x, b.spawn.y - b.y);
+        b.act = "run";
+      } else {
+        bots.splice(i--, 1);
+      }
+    }
+    if (activeBots.length === 0) return [];
 
     if (!okMap) {
-      bot.targetUid = null;
-      bot.act = "stand";
-      return null;
-    }
-
-    let target = bot.targetUid !== null ? liveMobs.get(bot.targetUid) : null;
-    if (!target || !isMobEligible(target, bot, map)) {
-      bot.targetUid = null;
-      target = pickTarget(liveMobs, bot, map);
-      if (target) bot.targetUid = target.uid;
-    }
-
-    if (!target) {
-      bot.act = t < bot.atkAnimUntil ? "attack" : "stand";
-      return null;
-    }
-
-    const dtSec = prevT === null ? 0 : Math.max(0, t - prevT) / 1000;
-    let dist = Math.hypot(target.x - bot.x, target.y - bot.y);
-    let moved = false;
-
-    if (dist > ATTACK_RANGE && dtSec > 0) {
-      const want = Math.max(0, dist - STEP_STOP_DIST);
-      const step = stepStraight(map, bot.x, bot.y, target.x, target.y, Math.min(RUN_SPEED * dtSec, want));
-      bot.x = step.x;
-      bot.y = step.y;
-      moved = step.moved;
-      dist = Math.hypot(target.x - bot.x, target.y - bot.y);
-    }
-
-    bot.dir = dirOf(target.x - bot.x, target.y - bot.y);
-
-    if (dist <= ATTACK_RANGE && safeClear(map, bot.x, bot.y, target.x, target.y)) {
-      if (t - bot.lastAtkAt >= ATK_COOLDOWN_MS) {
-        bot.atkN += 1;
-        bot.lastAtkAt = t;
-        bot.atkAnimUntil = t + ATK_ANIM_MS;
-        bot.act = "attack";
-        return target.uid;
+      for (const b of activeBots) {
+        b.targetUid = null;
+        b.act = "stand";
       }
-      bot.act = t < bot.atkAnimUntil ? "attack" : "stand";
-      return null;
+      return [];
     }
 
-    bot.act = moved ? "run" : (t < bot.atkAnimUntil ? "attack" : "stand");
-    return null;
+    const reserved = new Set();
+    for (const b of activeBots) {
+      const cur = b.targetUid !== null ? liveMobs.get(b.targetUid) : null;
+      if (!cur || !isMobEligible(cur, b, map) || reserved.has(cur.uid)) {
+        b.targetUid = null;
+      } else {
+        reserved.add(cur.uid);
+      }
+    }
+
+    const strikes = [];
+    const dtSec = justSpawned || prevT === null ? 0 : Math.max(0, t - prevT) / 1000;
+    for (const b of activeBots) {
+      let target = b.targetUid !== null ? liveMobs.get(b.targetUid) : null;
+      if (!target) {
+        target = pickTarget(liveMobs, b, map, reserved);
+        if (target) {
+          b.targetUid = target.uid;
+          reserved.add(target.uid);
+        }
+      }
+
+      if (!target) {
+        b.act = t < b.atkAnimUntil ? "attack" : "stand";
+        continue;
+      }
+
+      let dist = Math.hypot(target.x - b.x, target.y - b.y);
+      let moved = false;
+
+      if (dist > ATTACK_RANGE && dtSec > 0) {
+        const want = Math.max(0, dist - STEP_STOP_DIST);
+        const step = stepStraight(map, b.x, b.y, target.x, target.y, Math.min(RUN_SPEED * dtSec, want));
+        b.x = step.x;
+        b.y = step.y;
+        moved = step.moved;
+        dist = Math.hypot(target.x - b.x, target.y - b.y);
+      }
+
+      b.dir = dirOf(target.x - b.x, target.y - b.y);
+
+      if (dist <= ATTACK_RANGE && safeClear(map, b.x, b.y, target.x, target.y)) {
+        if (t - b.lastAtkAt >= ATK_COOLDOWN_MS) {
+          b.atkN += 1;
+          b.lastAtkAt = t;
+          b.atkAnimUntil = t + ATK_ANIM_MS;
+          b.act = "attack";
+          strikes.push({ id: b.id, uid: target.uid });
+          continue;
+        }
+        b.act = t < b.atkAnimUntil ? "attack" : "stand";
+        continue;
+      }
+
+      b.act = moved ? "run" : (t < b.atkAnimUntil ? "attack" : "stand");
+    }
+
+    return strikes;
   }
 
   function trangThai() {
-    if (!bot) return null;
-    return { x: bot.x, y: bot.y, dir: bot.dir, act: bot.act, atkN: bot.atkN };
+    return bots.map((b) => ({ id: b.id, x: b.x, y: b.y, dir: b.dir, act: b.act, atkN: b.atkN }));
   }
 
   return { ghiDanh, tick, trangThai };
 }
 
-module.exports = { taoBotLuyenCong };
+function taoBotLuyenCong() {
+  const ctrl = taoBoDieuKhien(1);
+  return {
+    ghiDanh: ctrl.ghiDanh,
+    tick(t, nguoi, quai, map) {
+      const strikes = ctrl.tick(t, nguoi, quai, map);
+      return strikes.length ? strikes[0].uid : null;
+    },
+    trangThai() {
+      const list = ctrl.trangThai();
+      if (!list.length) return null;
+      const { x, y, dir, act, atkN } = list[0];
+      return { x, y, dir, act, atkN };
+    },
+  };
+}
+
+function taoDoiLuyenCong() {
+  return taoBoDieuKhien(SQUAD_MAX_BOTS);
+}
+
+module.exports = { taoBotLuyenCong, taoDoiLuyenCong };
