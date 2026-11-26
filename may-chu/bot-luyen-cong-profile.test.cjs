@@ -404,7 +404,7 @@ describe("bot-luyen-cong profile & cast metadata", () => {
     assert.equal(P.doi, true);
   });
 
-  it("gates bots on shared zone.lo >= 70 with env flag and resolves per-map collision grids without cross-map bleed", () => {
+  it("gates bots on shared zone 70..100 with env flag and resolves per-map collision grids without cross-map bleed", () => {
     const mapSpecs = {
       m319: { jmo: "j319" },
       m336: { jmo: "j336" },
@@ -430,24 +430,40 @@ describe("bot-luyen-cong profile & cast metadata", () => {
       [69, { id: 69, lo: 69, hi: 75, map: "m319" }],
       [70, { id: 70, lo: 70, hi: 80, map: "m336" }],
       [319, { id: 319, lo: 70, hi: 80, map: "m319" }],
+      [224, { id: 224, lo: 90, hi: 100, map: "m336" }],
+      [226, { id: 226, lo: 100, hi: 110, map: "m336" }],
       [999, { id: 999, lo: 80, hi: 90, map: "m336" }],
       [888, { id: 888, lo: Number.NaN, hi: 90, map: "m336" }],
       [777, { id: 777, lo: null, hi: 90, map: "m336" }],
       [778, { id: 778, lo: undefined, hi: 90, map: "m336" }],
+      [889, { id: 889, lo: 80, hi: Number.NaN, map: "m336" }],
+      [779, { id: 779, lo: 80, hi: null, map: "m336" }],
+      [780, { id: 780, lo: 80, map: "m336" }],
+      [781, { id: 781, lo: 80, hi: "   ", map: "m336" }],
+      [782, { id: 782, lo: 90, hi: 80, map: "m336" }],
+      [783, { id: 783, lo: "90", hi: "100", map: "m336" }],
     ]);
     const qcOn = loadQuaiChungMocked({
       zones,
-      bai: [69, 70, 319, 888, 777, 778], // 999 is non-shared (not in BAI)
+      bai: [69, 70, 319, 224, 226, 888, 777, 778, 889, 779, 780, 781, 782, 783], // 999 is non-shared (not in BAI)
       noiExtra: { FULL: { maps: mapSpecs, jmo: jmoSpecs } },
       mapCtor: FakeGameMap,
     });
     assert.equal(qcOn._bot.botDuoc(69), false);
     assert.equal(qcOn._bot.botDuoc(70), true);
     assert.equal(qcOn._bot.botDuoc(319), true);
+    assert.equal(qcOn._bot.botDuoc(224), true);
+    assert.equal(qcOn._bot.botDuoc(226), false);
     assert.equal(qcOn._bot.botDuoc(999), false);
     assert.equal(qcOn._bot.botDuoc(888), false);
     assert.equal(qcOn._bot.botDuoc(777), false);
     assert.equal(qcOn._bot.botDuoc(778), false);
+    assert.equal(qcOn._bot.botDuoc(889), false);
+    assert.equal(qcOn._bot.botDuoc(779), false);
+    assert.equal(qcOn._bot.botDuoc(780), false);
+    assert.equal(qcOn._bot.botDuoc(781), false);
+    assert.equal(qcOn._bot.botDuoc(782), false);
+    assert.equal(qcOn._bot.botDuoc(783), true);
 
     const grid319 = qcOn._bot.botMap(319);
     const grid70 = qcOn._bot.botMap(70);
@@ -459,15 +475,16 @@ describe("bot-luyen-cong profile & cast metadata", () => {
     assert.equal(qcOn._bot.botMap(70), grid70);
     assert.deepEqual(builtKeys, ["m319", "m336"]);
 
-    // Flag off disables all shared zones including >=70
+    // Flag off disables all shared zones including 70..100
     const qcOff = loadQuaiChungMocked({
       zones,
-      bai: [69, 70, 319],
+      bai: [69, 70, 319, 224],
       envBat: "0",
       noiExtra: { FULL: { maps: mapSpecs, jmo: jmoSpecs } },
       mapCtor: FakeGameMap,
     });
     assert.equal(qcOff._bot.botDuoc(70), false);
     assert.equal(qcOff._bot.botDuoc(319), false);
+    assert.equal(qcOff._bot.botDuoc(224), false);
   });
 });

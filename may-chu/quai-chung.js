@@ -33,7 +33,7 @@ const ND = require("./nghi-dame.js"); // nghi hack sát thương (anh 16/11 — 
 const SAT = () => require("./sat-thu.js"); // Boss Sát thủ chung (anh 03/11)
 
 const N = DO.NOI, CFG = N.CFG.quaiChung || {};
-const BOT_LO_MIN = 70, BOT_BAT = process.env.VL_BOT_LUYEN_CONG === "1", BOT_CAST_MS = 450;
+const BOT_LO_MIN = 70, BOT_HI_MAX = 100, BOT_BAT = process.env.VL_BOT_LUYEN_CONG === "1", BOT_CAST_MS = 450;
 // ponytail: curated 1-per-faction attack skills (skip traps/auras/passive/dash); widen to catalog scan + skill-style profiles when bot learns combos
 const BOT_SKILLS = [
   ["shaolin", 19], ["tianwang", 32], ["tangmen", 249], ["wudu", 71], ["emei", 88],
@@ -59,8 +59,9 @@ function botDuoc(bai) {
   const id = +bai;
   if (!BOT_BAT || !BAI.has(id)) return false;
   const z = N.ZONES && N.ZONES.get(id);
-  const lo = z && z.lo;
-  return typeof lo === "number" ? Number.isFinite(lo) && lo >= BOT_LO_MIN : (lo != null && lo !== "" && Number.isFinite(+lo) && +lo >= BOT_LO_MIN);
+  const num = (v) => (typeof v === "number" ? v : v != null && typeof v !== "boolean" && String(v).trim() !== "" ? +v : NaN);
+  const lo = num(z && z.lo), hi = num(z && z.hi);
+  return Number.isFinite(lo) && Number.isFinite(hi) && lo >= BOT_LO_MIN && hi <= BOT_HI_MAX && hi >= lo;
 }
 function botCatalogs(load = (p) => require(p)) {
   if (_botCat !== undefined) return _botCat;
