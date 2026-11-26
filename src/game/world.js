@@ -310,6 +310,7 @@ export class World {
     this.tk = null; // Tống Kim: trạng thái trận khi mình ở trong trận (src/game/tongkim.js — bot, người phe kia, phe mình, máy chủ trận) | null
     this.bhMinh = null; // dòng bang trên đầu mình { nhan: "Tên bang(Chức)" } | null (anh 14/11 — main.js bhMinhApply)
     this.ptKhac = new Map(); // phân thân của người khác cùng bãi (setOthers mục pt — may-chu/the-gioi.js): chỉ vẽ, không vào others (mời đội, giao dịch, vòng sáng…)
+    this.botLuyenCong = null; // NPC luyện công thử nghiệm (zone 319 — quaichung.js datBotLuyenCong): chỉ vẽ, không vào others/ptKhac/npcs/mobs
     this.vongHan = new Map(); // vòng sáng hỗ trợ của mình còn tác dụng: mã -> { lv, het } (vongCapNhat)
     this.resting = !!opt.rest;
     // thiết lập bản đồ của client (assets/data/maplist.json): hệ quái tự động + tỉ lệ 5 hệ
@@ -656,6 +657,24 @@ export class World {
   }
   // mốc qua kênh tức thời (main.js Net.wsNghe("vt") — may-chu/the-gioi.js): người chưa thấy qua nhịp thì bỏ (nhịp tạo người, đồ mặc…)
   themMoc(name, tr) { const e = this.others.get(name); if (e && Array.isArray(tr)) this._moc(e, tr, false, true); }
+  datBotLuyenCong(bot, tsMs) {
+    if (!bot || typeof bot !== "object") { this.botLuyenCong = null; return; }
+    const { x, y, dir, act, atkN } = bot;
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isInteger(dir) || dir < 0 || dir > 7) { this.botLuyenCong = null; return; }
+    if ((act !== "stand" && act !== "run" && act !== "attack") || !Number.isInteger(atkN) || atkN < 0) { this.botLuyenCong = null; return; }
+    let e = this.botLuyenCong;
+    if (!e) {
+      e = this.botLuyenCong = {
+        kind: "other", name: "Luyện công (NPC)", sex: "m",
+        look: this.P.jx.look({ sex: "m" }),
+        x, y, dir, t: 0, act: "stand", atkN: 0,
+        buf: [], gap: 0.1, lag: 0.2, off: 0, fight: false,
+      };
+    }
+    const rawMs = Number.isFinite(tsMs) ? tsMs : this.time * 1000;
+    const ms = Math.max(0, Math.round(rawMs));
+    this._moc(e, [[ms, x, y, dir, act, atkN, 1, 1]], false, true);
+  }
   // Đang dịch chuyển giữa 2 mốc thì chạy, hướng theo đường đi; đứng giữa 2 mốc thì theo động tác người đó báo (đứng / ngồi / chết / bị
   // đánh). Đòn mới (atkN đổi) đánh lại từ khung đầu, đánh hết đòn mới đổi động tác khác.
   updateOther(e, dt) {
@@ -706,6 +725,7 @@ export class World {
     for (const n of this.npcs) n.t += dt;
     for (const e of this.others.values()) this.updateOther(e, dt);
     for (const e of this.ptKhac.values()) this.updateOther(e, dt);
+    if (this.botLuyenCong) this.updateOther(this.botLuyenCong, dt);
     if (this.phanThan.length) this.capNhatPhanThan(dt);
     for (const t of this.texts) { t.t += dt; t.y -= 38 * dt; }
     if (this.drops.length) this.updateDrops(dt);
@@ -1631,7 +1651,7 @@ export class World {
     const hien = this.nguoiHien(), anSap = !!this.P.settings.anSap;
     const nguoi = [...this.others.values()].filter((e) => (!hien || hien.has(e.name)) && (!e.an || this.thayAn(e))), ptK = hien ? [...this.ptKhac.values()].filter((e) => hien.has(e.chu)) : this.ptKhac.values();
     // Tống Kim: người phe kia (e.tkn) đã vẽ ở others — bỏ bản để chọn mục tiêu; bot chết quá 2,5 giây thì ẩn tới lúc hồi sinh
-    const list = [...this.mobs, ...this.dongMinh, ...(anSap ? this.npcs.filter((n) => !n.sap) : this.npcs), ...nguoi, ...ptK, ...this.phanThan, this.player].filter((e) => !e.tkn && !(e.tkb && !e.alive && e.deadT > 2.5) && !(AN.bot && e.tkb && !e.tkq) && !(AN.quan && e.tkq) && e.x > cam.x - 200 && e.x < cam.x + vw + 200 && e.y > cam.y - 60 && e.y < cam.y + vh + 250).sort((a, b) => a.y - b.y);
+    const list = [...this.mobs, ...this.dongMinh, ...(anSap ? this.npcs.filter((n) => !n.sap) : this.npcs), ...nguoi, ...ptK, ...this.phanThan, ...(this.botLuyenCong ? [this.botLuyenCong] : []), this.player].filter((e) => !e.tkn && !(e.tkb && !e.alive && e.deadT > 2.5) && !(AN.bot && e.tkb && !e.tkq) && !(AN.quan && e.tkq) && e.x > cam.x - 200 && e.x < cam.x + vw + 200 && e.y > cam.y - 60 && e.y < cam.y + vh + 250).sort((a, b) => a.y - b.y);
     // bóng tự vẽ cho quái mà hình client không vẽ sẵn bóng (npc.json types[k].shadow) — anh duyệt 23/10; tắt được trong Tùy chỉnh.
     // Vẽ trước mọi thân: bóng nằm trên mặt đất, không đè lên con khác.
     if (this.P.settings.mobShadow) for (const e of list) if (e.kind === "mob" && (!e.tkb || e.tkq) && !(this.P.npc.type(e.type) || {}).shadow) this.P.npc.drawShadow(ctx, e.type, this.mobDrawOpt(e)); // quân NPC Tống Kim (tkq): bóng như quái

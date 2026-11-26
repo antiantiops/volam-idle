@@ -33,6 +33,80 @@ const ND = require("./nghi-dame.js"); // nghi hack sát thương (anh 16/11 — 
 const SAT = () => require("./sat-thu.js"); // Boss Sát thủ chung (anh 03/11)
 
 const N = DO.NOI, CFG = N.CFG.quaiChung || {};
+const BOT_Z = 319, BOT_BAT = process.env.VL_BOT_LUYEN_CONG === "1";
+let _botMod = null, _botMap = undefined, _botMapLoi = false, _botMapWait = false;
+function botMap319() {
+  if (_botMap !== undefined) return _botMap;
+  if (_botMapWait) return null;
+  try {
+    const z = N.ZONES.get(BOT_Z), key = z && z.map;
+    const m = key && ((N.FULL && N.FULL.maps && N.FULL.maps[key]) || (N.MAPS && N.MAPS.maps && N.MAPS.maps[key]));
+    const j = m && m.jmo && ((N.FULL && N.FULL.jmo && N.FULL.jmo[m.jmo]) || (N.MAPS && N.MAPS.jmo && N.MAPS.jmo[m.jmo]));
+    if (!m || !j || !j.obs || !(j.gw > 0) || !(j.gh > 0) || !(j.cw > 0) || !(j.ch > 0)) {
+      _botMap = null;
+      if (!_botMapLoi) { _botMapLoi = true; console.error("Bot luyện công 319: thiếu dữ liệu lưới bản đồ"); }
+      return null;
+    }
+    const build = (GameMap) => {
+      const gm = new GameMap(key, m, j, null, null);
+      if (!gm.grid) {
+        _botMap = null;
+        if (!_botMapLoi) { _botMapLoi = true; console.error("Bot luyện công 319: không dựng được map.grid"); }
+        return null;
+      }
+      _botMap = { walkable: (x, y) => gm.walkable(x, y) && !gm.an(x, y), clear: (ax, ay, bx, by) => gm.clear(ax, ay, bx, by) };
+      return _botMap;
+    };
+    try { return build(require("../src/game/map.js").GameMap); }
+    catch (e) {
+      if (e && e.code === "ERR_REQUIRE_ESM") {
+        _botMapWait = true;
+        import("../src/game/map.js").then((mod) => { _botMapWait = false; build(mod.GameMap); }).catch((err) => {
+          _botMapWait = false; _botMap = null;
+          if (!_botMapLoi) { _botMapLoi = true; console.error("Bot luyện công 319:", err.message); }
+        });
+        return null;
+      }
+      throw e;
+    }
+  } catch (e) {
+    _botMap = null;
+    if (!_botMapLoi) { _botMapLoi = true; console.error("Bot luyện công 319:", e.message); }
+  }
+  return _botMap;
+}
+function botTao() {
+  if (!BOT_BAT) return null;
+  try { _botMod = _botMod || require("./bot-luyen-cong.js").taoBotLuyenCong; return _botMod(); }
+  catch (e) { if (!_botMapLoi) { _botMapLoi = true; console.error("Bot luyện công 319:", e.message); } return null; }
+}
+const botKhac = (cu, moi) => (!cu && !moi) ? false : (!cu || !moi) ? true : cu.x !== moi.x || cu.y !== moi.y || cu.dir !== moi.dir || cu.act !== moi.act || cu.atkN !== moi.atkN;
+function botBuoc(P, M, t) {
+  if (!BOT_BAT || P.bai !== BOT_Z || !P.botCtl) return;
+  const nguoi = new Map(), TG = require("./the-gioi.js");
+  for (const tk of P.trong.keys()) {
+    if (!M.has(tk) || (P.cu && P.cu.has(tk))) continue;
+    const p = TG.dangChoi(tk);
+    if (p && p.zone === BOT_Z && p.chung === 1 && Number.isFinite(p.x) && Number.isFinite(p.y)) nguoi.set(tk, { x: p.x, y: p.y });
+  }
+  const quai = [];
+  for (const m of P.q.values()) {
+    if (!(m.mau > 0)) continue;
+    const v = P.vt.get(m.uid);
+    const x = v && Number.isFinite(v[0]) ? v[0] : m.x, y = v && Number.isFinite(v[1]) ? v[1] : m.y;
+    quai.push({ uid: m.uid, x, y, mau: m.mau, mauMax: m.mauMax, boss: m.boss, ta: m.ta, sat: m.sat, dmg: m.dmg });
+  }
+  const hitUid = P.botCtl.tick(t, nguoi, quai, botMap319());
+  const st = P.botCtl.trangThai();
+  if (botKhac(P.botSt, st)) { P.botSt = st; P.doi = true; }
+  if (hitUid == null) return;
+  const m = P.q.get(hitUid);
+  if (!m || !(m.mau > 0) || m.boss || m.ta || m.sat || m.dmg.size > 0 || (m.danhLuc && t - m.danhLuc < 12000)) return;
+  const dmg = Math.max(1, Math.floor(m.mauMax * 0.05));
+  m.mau = Math.max(0, m.mau - dmg);
+  P.hpDoi.add(m.uid); P.doi = true;
+  if (m.mau <= 0) { chet(P, m); phat(P); }
+}
 // quái bản chung mạnh hơn (anh 03/11 "bãi quái chung quái mạnh hơn 50% bao gồm cả tần suất tấn công" — cau-hinh.json quaiChung.manh): máu nhân ở
 // đây lúc chủ bãi sinh (qcSinh); sát thương + tần suất đánh trình duyệt nhân (luật quaiChung.manh — src/game/quaichung.js)
 const QC_MAU = Math.max(1, +((CFG.manh || {}).mau) || 1);
@@ -54,7 +128,7 @@ function phong(bai) {
   let P = PH.get(bai);
   if (!P) {
     P = { bai, q: new Map(), vt: new Map(), trong: new Map(), song: new Map(), an: new Set(), chu: null, ack: new Map(), han: new Map(), dan: new Map(),
-      seq: 0, sv: 0, daSpec: new Map(), doi: true, guiLuc: 0, rong: 0, hpDoi: new Set(), hpLuc: 0, nk: [] };
+      seq: 0, sv: 0, daSpec: new Map(), doi: true, guiLuc: 0, rong: 0, hpDoi: new Set(), hpLuc: 0, nk: [], ...(BOT_BAT && bai === BOT_Z ? { botCtl: botTao(), botSt: null } : {}) };
     PH.set(bai, P);
   }
   return P;
@@ -92,6 +166,7 @@ function doiDs(P, e) {
 function trangThai(P, tk, full, dan, hd, qd) {
   return { bai: P.bai, chu: P.trong.get(P.chu) || null, tv: [...P.trong.values()], cap: capP(P), sv: P.sv,
     ...(hd ? { hd } : { hp: [...P.q.values()].map(mauCua) }), dan, ack: P.ack.get(tk) || 0, gio: Date.now(), ...(qd ? { qd } : {}),
+    ...(BOT_BAT && P.bai === BOT_Z && "botSt" in P ? { bot: P.botSt } : {}),
     ...(full ? { q: [...P.q.values()].map(dongQ), vt: [...P.vt].map(([u, v]) => [u, ...v]) } : {}) };
 }
 // gửi trạng thái cho cả bãi: người có bản danh sách mà nhật ký còn giữ đủ từ đó -> chỉ phần đổi (qd); người mới / bản quá cũ -> đủ danh sách
@@ -134,6 +209,7 @@ setInterval(() => {
     chonChu(P, t);
     for (const [u, m] of P.q) if (m.mau <= 0 && t - m.chet > XAC_MS) { P.q.delete(u); P.vt.delete(u); doiDs(P, { bo: u }); }
     satBai(P, t);
+    botBuoc(P, M, t);
     if (!P.trong.size) { if (!P.rong) P.rong = t; else if (t - P.rong > XOA_MS) PH.delete(bai); continue; }
     P.rong = 0;
     if ((P.doi && t - P.guiLuc >= GUI_MS) || t - P.guiLuc >= NHAC_MS) phat(P);
@@ -197,6 +273,7 @@ function danh(tk, bai, tin) {
     if (pt && m.sat) continue; // Boss Sát thủ: phân thân không gây sát thương, chỉ hỗ trợ (anh 13/11 — trang cũ chưa F5 vẫn gửi dp)
     const nhan = Math.min(v, H.han, m.mau); if (!(nhan > 0)) continue;
     H.han -= nhan; m.mau -= nhan; m.dmg.set(tk, (m.dmg.get(tk) || 0) + nhan); m.danhLuc = t; P.dan.set(m.uid, P.trong.get(tk)); P.hpDoi.add(m.uid); P.doi = true;
+    if (!pt && P.bai === BOT_Z && P.botCtl && !m.boss && !m.ta && !m.sat) P.botCtl.ghiDanh(t, tk, m.uid);
     if (pt) { m.dmgPt = m.dmgPt || new Map(); m.dmgPt.set(tk, (m.dmgPt.get(tk) || 0) + nhan); }
     if (m.mau <= 0) { chet(P, m); coChet = true; }
   }
