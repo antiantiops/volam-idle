@@ -79,14 +79,14 @@ export const QuaiChung = {
     if (p.hp) this.hpSv = new Map(p.hp); else for (const [u, v] of p.hd || []) this.hpSv.set(u, v); // hd: chỉ con đổi máu
     this.p = p;
     this.gui = this.gui.filter((g) => g.s > (p.ack | 0));
-    if (p.bai !== 319) {
-      if (this.w.datBotLuyenCongList) this.w.datBotLuyenCongList(null, p.gio);
-      else if (this.w.datBotLuyenCong) this.w.datBotLuyenCong(null, p.gio);
-    } else if (Array.isArray(p.bots)) {
+    if (Array.isArray(p.bots)) {
       if (this.w.datBotLuyenCongList) this.w.datBotLuyenCongList(p.bots, p.gio);
       else if (this.w.datBotLuyenCong) this.w.datBotLuyenCong(p.bots[0] || null, p.gio);
-    } else if (this.w.datBotLuyenCong) {
+    } else if (p.bai === 319 && "bot" in p && this.w.datBotLuyenCong) {
       this.w.datBotLuyenCong(p.bot || null, p.gio);
+    } else {
+      if (this.w.datBotLuyenCongList) this.w.datBotLuyenCongList(null, p.gio);
+      else if (this.w.datBotLuyenCong) this.w.datBotLuyenCong(null, p.gio);
     }
     this.dat();
   },

@@ -32,7 +32,7 @@ const PATROL_ARRIVE_EPS = 14;
 
 const SPAWN_RADII = [160, 200, 120, 240, 88, 280];
 const SPAWN_DIRS = 16;
-const SQUAD_MAX_BOTS = 5;
+const SQUAD_MAX_BOTS = 3;
 const SLOT_ANGLE_OFFSETS = [0, 1, -1, 2, -2];
 const PLAYER_CLEAR_DIST = 56;
 const SUBSTEP_PX = 12;

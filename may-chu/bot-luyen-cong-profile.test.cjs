@@ -53,29 +53,40 @@ function makeCatalog({ req = 50, max = 20, missingSkillId = null, missingVcId = 
   return { factions, skills, vcSk };
 }
 
-function loadQuaiChungMocked({ zone = { id: 319, lo: 70, hi: 80, map: "m319" }, skillsJson = null, vocongJson = null } = {}) {
+function loadQuaiChungMocked({ zone = { id: 319, lo: 70, hi: 80, map: "m319" }, zones = null, bai = null, envBat = "1", skillsJson = null, vocongJson = null, noiExtra = null, mapCtor = null } = {}) {
   const targetPath = path.resolve(__dirname, "quai-chung.js");
   const doPath = path.resolve(__dirname, "do.js");
   const wsPath = path.resolve(__dirname, "ws.js");
   const ndPath = path.resolve(__dirname, "nghi-dame.js");
   const tgPath = path.resolve(__dirname, "the-gioi.js");
+  const mapPath = path.resolve(__dirname, "../src/game/map.js");
   const skillsPath = path.resolve(__dirname, "../assets/web/skill/skills.json");
   const vocongPath = path.resolve(__dirname, "../assets/web/vocong/vocong.json");
 
+  const zoneEntries = zones
+    ? (zones instanceof Map ? [...zones.entries()] : Object.entries(zones).map(([k, v]) => [+k, v]))
+    : (zone ? [[zone.id || 319, zone]] : []);
+  const baiList = bai || (zoneEntries.length ? zoneEntries.map(([id]) => id) : [319]);
   const mocks = new Map([
     [doPath, {
       LUAT: { canBang: {} },
       NOI: {
-        CFG: { quaiChung: { bai: [319] } },
-        ZONES: new Map(zone ? [[319, zone]] : []),
+        CFG: { quaiChung: { bai: baiList } },
+        ZONES: new Map(zoneEntries),
+        ...(noiExtra || {}),
       },
     }],
     [wsPath, { nhan() {}, moi() {}, cua: () => null, guiTk() {} }],
     [ndPath, { cong() {} }],
     [tgPath, { dangChoi: () => null, thongBaoTk() {} }],
   ]);
+  if (mapCtor) mocks.set(mapPath, { GameMap: mapCtor });
   if (skillsJson !== null) mocks.set(skillsPath, skillsJson);
   if (vocongJson !== null) mocks.set(vocongPath, vocongJson);
+
+  const prevEnv = process.env.VL_BOT_LUYEN_CONG;
+  if (envBat === undefined) delete process.env.VL_BOT_LUYEN_CONG;
+  else process.env.VL_BOT_LUYEN_CONG = envBat;
 
   const origLoad = Module._load;
   delete require.cache[targetPath];
@@ -90,10 +101,26 @@ function loadQuaiChungMocked({ zone = { id: 319, lo: 70, hi: 80, map: "m319" }, 
     return origLoad.call(this, request, parent, isMain);
   };
   try {
-    return require(targetPath);
+    const mod = require(targetPath);
+    if (mapCtor) {
+      const origBotMap = mod._bot.botMap;
+      mod._bot.botMap = (baiId) => {
+        const prev = Module._load;
+        Module._load = function mockedMapLoad(request, parent, isMain) {
+          const resolved = Module._resolveFilename(request, parent, isMain);
+          if (resolved === mapPath) return { GameMap: mapCtor };
+          return prev.call(this, request, parent, isMain);
+        };
+        try { return origBotMap(baiId); }
+        finally { Module._load = prev; }
+      };
+    }
+    return mod;
   } finally {
     Module._load = origLoad;
     delete require.cache[targetPath];
+    if (prevEnv === undefined) delete process.env.VL_BOT_LUYEN_CONG;
+    else process.env.VL_BOT_LUYEN_CONG = prevEnv;
   }
 }
 
@@ -308,7 +335,7 @@ describe("bot-luyen-cong profile & cast metadata", () => {
     assert.deepEqual({ sex: bot0().sex, look: bot0().look }, CURATED_OUTFITS.tangmen);
   });
 
-  it("spawns 5-bot squad with distinct factions and outfits, stable per-bot casts/profiles, and exact 5% hit damage", () => {
+  it("spawns 3-bot squad with distinct factions and outfits, stable per-bot casts/profiles, and exact 5% hit damage", () => {
     const cat = makeCatalog({ req: 50, max: 20 });
     const qc = loadQuaiChungMocked({
       skillsJson: { factions: cat.factions, skills: cat.skills },
@@ -322,12 +349,10 @@ describe("bot-luyen-cong profile & cast metadata", () => {
       { uid: 11, tpl: 1, lv: 75, he: 0, x: 1180, y: 1000, mau: 1000, mauMax: 1000, boss: 0, ta: 0, sat: 0, dmg: new Map() },
       { uid: 12, tpl: 1, lv: 75, he: 0, x: 1000, y: 1180, mau: 1000, mauMax: 1000, boss: 0, ta: 0, sat: 0, dmg: new Map() },
       { uid: 13, tpl: 1, lv: 75, he: 0, x: 820, y: 1000, mau: 1000, mauMax: 1000, boss: 0, ta: 0, sat: 0, dmg: new Map() },
-      { uid: 14, tpl: 1, lv: 75, he: 0, x: 1000, y: 820, mau: 1000, mauMax: 1000, boss: 0, ta: 0, sat: 0, dmg: new Map() },
-      { uid: 15, tpl: 1, lv: 75, he: 0, x: 1140, y: 1140, mau: 1000, mauMax: 1000, boss: 0, ta: 0, sat: 0, dmg: new Map() },
     ];
     for (const m of mobs) P.q.set(m.uid, m);
 
-    // Deterministic RNG cycling fixed values would collide without faction exclusion; squad must still get 5 distinct factions & full outfits
+    // Deterministic RNG cycling fixed values would collide without faction exclusion; squad must still get 3 distinct factions & full outfits
     let i = 0;
     const rng = () => [0.15, 0.0, 0.25, 0.5][i++ % 4];
     const step = (t) => qc._bot.botBuoc(P, new Map([["p1", {}]]), t, {
@@ -341,20 +366,20 @@ describe("bot-luyen-cong profile & cast metadata", () => {
     P.botCtl.ghiDanh(0, "p1", 1);
     P.botCtl.ghiDanh(1000, "p1", 1);
     step(3100);
-    assert.equal(P.botsSt.length, 5);
+    assert.equal(P.botsSt.length, 3);
     assert.equal(P.doi, true);
 
     const facs = P.botsSt.map((b) => b.fac);
-    assert.equal(new Set(facs).size, 5);
+    assert.equal(new Set(facs).size, 3);
     const outfits = P.botsSt.map((b) => JSON.stringify({ sex: b.sex, look: b.look }));
-    assert.equal(new Set(outfits).size, 5);
+    assert.equal(new Set(outfits).size, 3);
     for (const b of P.botsSt) {
       assert.deepEqual({ sex: b.sex, look: b.look }, CURATED_OUTFITS[b.fac]);
       assert.equal(b.look.mantle, 1);
       assert.equal(b.look.horse, undefined);
     }
 
-    // Step until all 5 bots have attacked once; verify each accepted hit deals exact 5% (50) per atkN and outfits/profiles stay stable
+    // Step until all 3 bots have attacked once; verify each accepted hit deals exact 5% (50) per atkN and outfits/profiles stay stable
     for (let t = 3300; t <= 9000; t += 200) {
       step(t);
       if (P.botsSt.every((b) => b.atkN >= 1)) break;
@@ -363,19 +388,86 @@ describe("bot-luyen-cong profile & cast metadata", () => {
     assert.deepEqual(P.botsSt.map((b) => b.fac), facs);
     assert.deepEqual(P.botsSt.map((b) => JSON.stringify({ sex: b.sex, look: b.look })), outfits);
     const totalAtk = P.botsSt.reduce((sum, b) => sum + b.atkN, 0);
-    const totalDmg = [11, 12, 13, 14, 15].reduce((sum, uid) => sum + (1000 - P.q.get(uid).mau), 0);
+    const totalDmg = [11, 12, 13].reduce((sum, uid) => sum + (1000 - P.q.get(uid).mau), 0);
     assert.equal(totalDmg, totalAtk * 50);
-    for (const uid of [11, 12, 13, 14, 15]) {
+    for (const uid of [11, 12, 13]) {
       const lost = 1000 - P.q.get(uid).mau;
       assert.ok(lost >= 50 && lost % 50 === 0);
     }
 
     // Despawn clears P.botsSt and sets P.doi = true (last hit at t=1000; 45s inactive + up to 8s exit)
     for (let t = 9200; t <= 45800; t += 200) step(t);
-    assert.equal(P.botsSt.length, 5);
+    assert.equal(P.botsSt.length, 3);
     P.doi = false;
     for (let t = 46000; t <= 54000; t += 200) step(t);
     assert.deepEqual(P.botsSt, []);
     assert.equal(P.doi, true);
+  });
+
+  it("gates bots on shared zone.lo >= 70 with env flag and resolves per-map collision grids without cross-map bleed", () => {
+    const mapSpecs = {
+      m319: { jmo: "j319" },
+      m336: { jmo: "j336" },
+    };
+    const jmoSpecs = {
+      j319: { obs: "AA==", gw: 10, gh: 10, cw: 32, ch: 32, minX: 100 },
+      j336: { obs: "AA==", gw: 12, gh: 12, cw: 32, ch: 32, minX: 2000 },
+    };
+    const builtKeys = [];
+    class FakeGameMap {
+      constructor(key, m, j) {
+        builtKeys.push(key);
+        this.grid = true;
+        this.minX = j.minX;
+      }
+      walkable(x) { return x >= this.minX; }
+      an() { return false; }
+      clear() { return true; }
+      path(ax, ay, bx, by) { return [[bx, by]]; }
+    }
+
+    const zones = new Map([
+      [69, { id: 69, lo: 69, hi: 75, map: "m319" }],
+      [70, { id: 70, lo: 70, hi: 80, map: "m336" }],
+      [319, { id: 319, lo: 70, hi: 80, map: "m319" }],
+      [999, { id: 999, lo: 80, hi: 90, map: "m336" }],
+      [888, { id: 888, lo: Number.NaN, hi: 90, map: "m336" }],
+      [777, { id: 777, lo: null, hi: 90, map: "m336" }],
+      [778, { id: 778, lo: undefined, hi: 90, map: "m336" }],
+    ]);
+    const qcOn = loadQuaiChungMocked({
+      zones,
+      bai: [69, 70, 319, 888, 777, 778], // 999 is non-shared (not in BAI)
+      noiExtra: { FULL: { maps: mapSpecs, jmo: jmoSpecs } },
+      mapCtor: FakeGameMap,
+    });
+    assert.equal(qcOn._bot.botDuoc(69), false);
+    assert.equal(qcOn._bot.botDuoc(70), true);
+    assert.equal(qcOn._bot.botDuoc(319), true);
+    assert.equal(qcOn._bot.botDuoc(999), false);
+    assert.equal(qcOn._bot.botDuoc(888), false);
+    assert.equal(qcOn._bot.botDuoc(777), false);
+    assert.equal(qcOn._bot.botDuoc(778), false);
+
+    const grid319 = qcOn._bot.botMap(319);
+    const grid70 = qcOn._bot.botMap(70);
+    assert.ok(grid319 && grid70 && grid319 !== grid70);
+    assert.equal(grid319.walkable(150, 100), true);
+    assert.equal(grid70.walkable(150, 100), false);
+    assert.equal(grid70.walkable(2050, 100), true);
+    // Cached per map key on subsequent lookups
+    assert.equal(qcOn._bot.botMap(70), grid70);
+    assert.deepEqual(builtKeys, ["m319", "m336"]);
+
+    // Flag off disables all shared zones including >=70
+    const qcOff = loadQuaiChungMocked({
+      zones,
+      bai: [69, 70, 319],
+      envBat: "0",
+      noiExtra: { FULL: { maps: mapSpecs, jmo: jmoSpecs } },
+      mapCtor: FakeGameMap,
+    });
+    assert.equal(qcOff._bot.botDuoc(70), false);
+    assert.equal(qcOff._bot.botDuoc(319), false);
   });
 });

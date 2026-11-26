@@ -33,7 +33,7 @@ const ND = require("./nghi-dame.js"); // nghi hack sát thương (anh 16/11 — 
 const SAT = () => require("./sat-thu.js"); // Boss Sát thủ chung (anh 03/11)
 
 const N = DO.NOI, CFG = N.CFG.quaiChung || {};
-const BOT_Z = 319, BOT_BAT = process.env.VL_BOT_LUYEN_CONG === "1", BOT_CAST_MS = 450;
+const BOT_LO_MIN = 70, BOT_BAT = process.env.VL_BOT_LUYEN_CONG === "1", BOT_CAST_MS = 450;
 // ponytail: curated 1-per-faction attack skills (skip traps/auras/passive/dash); widen to catalog scan + skill-style profiles when bot learns combos
 const BOT_SKILLS = [
   ["shaolin", 19], ["tianwang", 32], ["tangmen", 249], ["wudu", 71], ["emei", 88],
@@ -53,7 +53,15 @@ const BOT_OUTFITS = {
   kunlun: { sex: "m", look: { armor: 42, helm: 12, weapon: 21, mantle: 1 } },
 };
 const BOT_OUTFIT_DEFAULT = { sex: "m", look: { armor: 19, helm: 19, weapon: 1, mantle: 1 } };
-let _botMod = null, _botMap = undefined, _botMapLoi = false, _botMapWait = false, _botCat = undefined;
+let _botMod = null, _botCat = undefined;
+const _botMaps = new Map(), _botMapLoi = new Set(), _botMapWait = new Map();
+function botDuoc(bai) {
+  const id = +bai;
+  if (!BOT_BAT || !BAI.has(id)) return false;
+  const z = N.ZONES && N.ZONES.get(id);
+  const lo = z && z.lo;
+  return typeof lo === "number" ? Number.isFinite(lo) && lo >= BOT_LO_MIN : (lo != null && lo !== "" && Number.isFinite(+lo) && +lo >= BOT_LO_MIN);
+}
 function botCatalogs(load = (p) => require(p)) {
   if (_botCat !== undefined) return _botCat;
   try {
@@ -89,54 +97,64 @@ function botRollProfile(z, cat, rng = Math.random, curated = BOT_SKILLS, exclude
   const rv = rng(), r = Number.isFinite(rv) ? rv : 0;
   return pool[Math.min(pool.length - 1, Math.floor(Math.max(0, Math.min(0.999999999999, r)) * pool.length))];
 }
-function botMap319() {
-  if (_botMap !== undefined) return _botMap;
-  if (_botMapWait) return null;
+function botMap(bai) {
+  const z = N.ZONES && N.ZONES.get(+bai), key = z && z.map;
+  if (!key) return null;
+  if (_botMaps.has(key)) return _botMaps.get(key);
+  if (_botMapWait.has(key)) return null;
+  const logLoi = (msg) => {
+    if (_botMapLoi.has(key)) return;
+    _botMapLoi.add(key);
+    console.error(`Bot luyện công (${bai}/${key}): ${msg}`);
+  };
   try {
-    const z = N.ZONES.get(BOT_Z), key = z && z.map;
-    const m = key && ((N.FULL && N.FULL.maps && N.FULL.maps[key]) || (N.MAPS && N.MAPS.maps && N.MAPS.maps[key]));
+    const m = (N.FULL && N.FULL.maps && N.FULL.maps[key]) || (N.MAPS && N.MAPS.maps && N.MAPS.maps[key]);
     const j = m && m.jmo && ((N.FULL && N.FULL.jmo && N.FULL.jmo[m.jmo]) || (N.MAPS && N.MAPS.jmo && N.MAPS.jmo[m.jmo]));
     if (!m || !j || !j.obs || !(j.gw > 0) || !(j.gh > 0) || !(j.cw > 0) || !(j.ch > 0)) {
-      _botMap = null;
-      if (!_botMapLoi) { _botMapLoi = true; console.error("Bot luyện công 319: thiếu dữ liệu lưới bản đồ"); }
+      _botMaps.set(key, null);
+      logLoi("thiếu dữ liệu lưới bản đồ");
       return null;
     }
     const build = (GameMap) => {
       const gm = new GameMap(key, m, j, null, null);
       if (!gm.grid) {
-        _botMap = null;
-        if (!_botMapLoi) { _botMapLoi = true; console.error("Bot luyện công 319: không dựng được map.grid"); }
+        _botMaps.set(key, null);
+        logLoi("không dựng được map.grid");
         return null;
       }
-      _botMap = {
+      const adapter = {
         walkable: (x, y) => gm.walkable(x, y) && !gm.an(x, y),
         clear: (ax, ay, bx, by) => gm.clear(ax, ay, bx, by),
         path: (ax, ay, bx, by) => gm.path(ax, ay, bx, by, 4000, 1.25),
       };
-      return _botMap;
+      _botMaps.set(key, adapter);
+      return adapter;
     };
     try { return build(require("../src/game/map.js").GameMap); }
     catch (e) {
       if (e && e.code === "ERR_REQUIRE_ESM") {
-        _botMapWait = true;
-        import("../src/game/map.js").then((mod) => { _botMapWait = false; build(mod.GameMap); }).catch((err) => {
-          _botMapWait = false; _botMap = null;
-          if (!_botMapLoi) { _botMapLoi = true; console.error("Bot luyện công 319:", err.message); }
+        _botMapWait.set(key, true);
+        import("../src/game/map.js").then((mod) => { _botMapWait.delete(key); build(mod.GameMap); }).catch((err) => {
+          _botMapWait.delete(key); _botMaps.set(key, null);
+          logLoi(err.message);
         });
         return null;
       }
       throw e;
     }
   } catch (e) {
-    _botMap = null;
-    if (!_botMapLoi) { _botMapLoi = true; console.error("Bot luyện công 319:", e.message); }
+    _botMaps.set(key, null);
+    logLoi(e.message);
+    return null;
   }
-  return _botMap;
 }
 function botTao() {
   if (!BOT_BAT) return null;
   try { _botMod = _botMod || require("./bot-luyen-cong.js").taoDoiLuyenCong; return _botMod(); }
-  catch (e) { if (!_botMapLoi) { _botMapLoi = true; console.error("Bot luyện công 319:", e.message); } return null; }
+  catch (e) {
+    if (!_botMapLoi.has("_mod")) { _botMapLoi.add("_mod"); console.error("Bot luyện công:", e.message); }
+    return null;
+  }
 }
 const botCastKhac = (a, b) => (!a && !b) ? false : (!a || !b) ? true : a.n !== b.n || a.x !== b.x || a.y !== b.y || a.at !== b.at;
 const botLookKhac = (a, b) => (!a && !b) ? false : (!a || !b) ? true : a.armor !== b.armor || a.helm !== b.helm || a.weapon !== b.weapon || a.mantle !== b.mantle;
@@ -149,19 +167,19 @@ function botKhac(cu, moi) {
   return false;
 }
 function botBuoc(P, M, t, opts) {
-  if (!P || (!opts && (!BOT_BAT || P.bai !== BOT_Z)) || !P.botCtl) return;
+  if (!P || (!opts && !botDuoc(P.bai)) || !P.botCtl) return;
   const o = opts || {};
-  const z = o.zone !== undefined ? o.zone : N.ZONES.get(BOT_Z);
+  const z = o.zone !== undefined ? o.zone : N.ZONES.get(P.bai);
   const loadCat = o.getCatalogs || botCatalogs;
   const rng = o.rng || Math.random;
-  const map = o.map !== undefined ? o.map : botMap319();
+  const map = o.map !== undefined ? o.map : botMap(P.bai);
   const nguoi = o.nguoi || new Map();
   if (!o.nguoi) {
     const TG = require("./the-gioi.js");
     for (const tk of P.trong.keys()) {
       if (!M.has(tk) || (P.cu && P.cu.has(tk))) continue;
       const p = TG.dangChoi(tk);
-      if (p && p.zone === BOT_Z && p.chung === 1 && Number.isFinite(p.x) && Number.isFinite(p.y)) nguoi.set(tk, { x: p.x, y: p.y });
+      if (p && p.zone === P.bai && p.chung === 1 && Number.isFinite(p.x) && Number.isFinite(p.y)) nguoi.set(tk, { x: p.x, y: p.y });
     }
   }
   const quai = [];
@@ -247,7 +265,7 @@ function phong(bai) {
   let P = PH.get(bai);
   if (!P) {
     P = { bai, q: new Map(), vt: new Map(), trong: new Map(), song: new Map(), an: new Set(), chu: null, ack: new Map(), han: new Map(), dan: new Map(),
-      seq: 0, sv: 0, daSpec: new Map(), doi: true, guiLuc: 0, rong: 0, hpDoi: new Set(), hpLuc: 0, nk: [], ...(BOT_BAT && bai === BOT_Z ? { botCtl: botTao(), botsSt: [] } : {}) };
+      seq: 0, sv: 0, daSpec: new Map(), doi: true, guiLuc: 0, rong: 0, hpDoi: new Set(), hpLuc: 0, nk: [], ...(botDuoc(bai) ? { botCtl: botTao(), botsSt: [] } : {}) };
     PH.set(bai, P);
   }
   return P;
@@ -285,7 +303,7 @@ function doiDs(P, e) {
 function trangThai(P, tk, full, dan, hd, qd) {
   return { bai: P.bai, chu: P.trong.get(P.chu) || null, tv: [...P.trong.values()], cap: capP(P), sv: P.sv,
     ...(hd ? { hd } : { hp: [...P.q.values()].map(mauCua) }), dan, ack: P.ack.get(tk) || 0, gio: Date.now(), ...(qd ? { qd } : {}),
-    ...(BOT_BAT && P.bai === BOT_Z && "botsSt" in P ? { bots: P.botsSt } : {}),
+    ...(botDuoc(P.bai) && "botsSt" in P ? { bots: P.botsSt } : {}),
     ...(full ? { q: [...P.q.values()].map(dongQ), vt: [...P.vt].map(([u, v]) => [u, ...v]) } : {}) };
 }
 // gửi trạng thái cho cả bãi: người có bản danh sách mà nhật ký còn giữ đủ từ đó -> chỉ phần đổi (qd); người mới / bản quá cũ -> đủ danh sách
@@ -392,7 +410,7 @@ function danh(tk, bai, tin) {
     if (pt && m.sat) continue; // Boss Sát thủ: phân thân không gây sát thương, chỉ hỗ trợ (anh 13/11 — trang cũ chưa F5 vẫn gửi dp)
     const nhan = Math.min(v, H.han, m.mau); if (!(nhan > 0)) continue;
     H.han -= nhan; m.mau -= nhan; m.dmg.set(tk, (m.dmg.get(tk) || 0) + nhan); m.danhLuc = t; P.dan.set(m.uid, P.trong.get(tk)); P.hpDoi.add(m.uid); P.doi = true;
-    if (!pt && P.bai === BOT_Z && P.botCtl && !m.boss && !m.ta && !m.sat) P.botCtl.ghiDanh(t, tk, m.uid);
+    if (!pt && botDuoc(P.bai) && P.botCtl && !m.boss && !m.ta && !m.sat) P.botCtl.ghiDanh(t, tk, m.uid);
     if (pt) { m.dmgPt = m.dmgPt || new Map(); m.dmgPt.set(tk, (m.dmgPt.get(tk) || 0) + nhan); }
     if (m.mau <= 0) { chet(P, m); coChet = true; }
   }
@@ -486,4 +504,4 @@ function nhanThuong(h, tk, key, admin) {
   return out.kn || out.nhan.length || out.roi.length || out.tin.length ? out : null;
 }
 
-module.exports = { bat, danh, nhanThuong, nvSat, BAI, _bot: { BOT_SKILLS, BOT_OUTFITS, BOT_OUTFIT_DEFAULT, botCatalogs, botPickLevel, botRollProfile, botBuoc, botKhac } };
+module.exports = { bat, danh, nhanThuong, nvSat, BAI, _bot: { BOT_LO_MIN, BOT_SKILLS, BOT_OUTFITS, BOT_OUTFIT_DEFAULT, botDuoc, botMap, botCatalogs, botPickLevel, botRollProfile, botBuoc, botKhac } };

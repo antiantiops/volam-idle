@@ -220,7 +220,7 @@ describe("bot-luyen-cong", () => {
     assert.equal(b.trangThai(), null);
   });
 
-  it("squad spawns 5 distinct bots, assigns distinct targets, protects human/boss, cleans up and respawns with new IDs", () => {
+  it("squad spawns 3 distinct bots, assigns distinct targets, protects human/boss, cleans up and respawns with new IDs", () => {
     const squad = taoDoiLuyenCong();
     const nguoi = new Map([["p1", { x: 1000, y: 1000 }]]);
     const quai = [
@@ -242,8 +242,8 @@ describe("bot-luyen-cong", () => {
 
     squad.tick(3100, nguoi, quai, openMap);
     const st0 = squad.trangThai();
-    assert.equal(st0.length, 5);
-    assert.deepEqual(st0.map((b) => b.id), [1, 2, 3, 4, 5]);
+    assert.equal(st0.length, 3);
+    assert.deepEqual(st0.map((b) => b.id), [1, 2, 3]);
 
     for (let i = 0; i < st0.length; i++) {
       assert.ok(Math.hypot(st0[i].x - 1000, st0[i].y - 1000) >= 56);
@@ -252,13 +252,13 @@ describe("bot-luyen-cong", () => {
       }
     }
 
-    // Run until all 5 bots strike; verify distinct targets across the squad and same-tick uniqueness
+    // Run until all 3 bots strike; verify distinct targets across the squad and same-tick uniqueness
     const hitByBot = new Map();
     for (let t = 3300; t <= 9000; t += 200) {
       const strikes = squad.tick(t, nguoi, quai, openMap);
       const tickUids = new Set();
       for (const s of strikes) {
-        assert.ok(s.id >= 1 && s.id <= 5);
+        assert.ok(s.id >= 1 && s.id <= 3);
         assert.ok(!tickUids.has(s.uid), "two bots must not strike same mob in one tick");
         tickUids.add(s.uid);
         assert.notEqual(s.uid, 1);
@@ -266,16 +266,16 @@ describe("bot-luyen-cong", () => {
         assert.notEqual(s.uid, 17);
         hitByBot.set(s.id, s.uid);
       }
-      if (hitByBot.size === 5) break;
+      if (hitByBot.size === 3) break;
     }
-    assert.equal(hitByBot.size, 5);
-    assert.equal(new Set(hitByBot.values()).size, 5);
+    assert.equal(hitByBot.size, 3);
+    assert.equal(new Set(hitByBot.values()).size, 3);
 
     // Human hits mob 11 -> whichever bot had it yields immediately; excess bot does not steal another bot's mob
     const mob11 = quai.find((m) => m.uid === 11);
     mob11.dmg.set("p1", 5);
     squad.ghiDanh(9100, "p1", 11);
-    const limitedMobs = quai.filter((m) => m.uid !== 15); // only 4 eligible mobs (12,13,14) -> 3 left for 5 bots
+    const limitedMobs = quai.filter((m) => m.uid !== 13 && m.uid !== 14 && m.uid !== 15); // only mob 12 left for 3 bots
     for (let t = 9300; t <= 12000; t += 200) {
       const strikes = squad.tick(t, nguoi, limitedMobs, openMap);
       const uids = strikes.map((s) => s.uid);
@@ -283,25 +283,25 @@ describe("bot-luyen-cong", () => {
       assert.ok(!uids.includes(11));
     }
 
-    // Inactivity exits and cleans up, respawn gets new monotonic IDs (> 5)
+    // Inactivity exits and cleans up, respawn gets new monotonic IDs (> 3)
     // last combat hit was t=9100 -> inactive at t=54100; exit takes up to 8s
     for (let t = 54200; t <= 63000; t += 200) {
       squad.tick(t, nguoi, [], openMap);
     }
     assert.deepEqual(squad.trangThai(), []);
 
-    // Cramped terrain spawns fewer than 5 bots without teleporting
+    // Cramped terrain spawns fewer than 3 bots without teleporting
     const crampedMap = {
-      walkable: (x, y) => x >= 980 && x <= 1190 && y >= 980 && y <= 1020,
-      clear: (ax, ay, bx, by) => ax >= 980 && ax <= 1190 && bx >= 980 && bx <= 1190 && ay >= 980 && ay <= 1020 && by >= 980 && by <= 1020,
+      walkable: (x, y) => x >= 980 && x <= 1160 && y >= 980 && y <= 1020,
+      clear: (ax, ay, bx, by) => ax >= 980 && ax <= 1160 && bx >= 980 && bx <= 1160 && ay >= 980 && ay <= 1020 && by >= 980 && by <= 1020,
     };
     squad.ghiDanh(65000, "p1", 1);
     squad.ghiDanh(65500, "p1", 1);
     squad.tick(68100, nguoi, quai, crampedMap);
     const crampedSt = squad.trangThai();
-    assert.ok(crampedSt.length >= 1 && crampedSt.length < 5);
+    assert.ok(crampedSt.length >= 1 && crampedSt.length < 3);
     for (const b of crampedSt) {
-      assert.ok(b.id > 5);
+      assert.ok(b.id > 3);
       assert.ok(crampedMap.walkable(b.x, b.y));
     }
   });
@@ -314,15 +314,15 @@ describe("bot-luyen-cong", () => {
     squad.ghiDanh(0, "p1", 1);
     squad.ghiDanh(1000, "p1", 1);
     squad.tick(3100, nguoi, quai, openMap);
-    assert.equal(squad.trangThai().length, 5);
+    assert.equal(squad.trangThai().length, 3);
 
     // Drop player transiently for 5s (< 8s) -> squad stays active even after player returns
     for (let t = 3500; t <= 8500; t += 500) {
       squad.tick(t, new Map(), quai, openMap);
     }
-    assert.equal(squad.trangThai().length, 5);
+    assert.equal(squad.trangThai().length, 3);
     squad.tick(9000, nguoi, quai, openMap);
-    assert.equal(squad.trangThai().length, 5);
+    assert.equal(squad.trangThai().length, 3);
 
     // Drop player continuously for >= 8s -> triggers exit and cleans up
     for (let t = 9500; t <= 26000; t += 200) {
@@ -398,7 +398,7 @@ describe("bot-luyen-cong", () => {
       }
     }
     assert.ok(sawRun);
-    assert.ok(movedCount >= 3);
+    assert.ok(movedCount >= 2);
 
     const newMob = makeMob(50, endPos[0].x + 120, endPos[0].y);
     let hit = false;
