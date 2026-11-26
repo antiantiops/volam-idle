@@ -258,9 +258,10 @@ export class GameWindows {
     this._eqSig = sig;
     for (const s of EQUIP_SLOTS) {
       const el = w.node(s, E); if (!el) continue;
-      const x = eq[s] && s !== held && ItemDB.item(eq[s].k); // món đang cầm trên tay: ô để trống
+      const it = eq[s], x = it && s !== held && ItemDB.item(it.k), ok = !!(x && x.ic); // món đang cầm trên tay: ô để trống
       el.querySelector("img")?.remove();
-      if (x && x.ic) { const im = document.createElement("img"); im.src = "assets/web/icon/" + x.ic; im.className = "jw-icon"; el.appendChild(im); }
+      el.classList.toggle("jw-dn", ok && (x.bo === "dinhNghiep" || (typeof it.k === "string" && it.k.startsWith("hk:"))));
+      if (ok) { const im = document.createElement("img"); im.src = "assets/web/icon/" + x.ic; im.className = "jw-icon"; el.appendChild(im); }
     }
   }
 
