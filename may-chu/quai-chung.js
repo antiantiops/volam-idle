@@ -33,8 +33,42 @@ const ND = require("./nghi-dame.js"); // nghi hack sát thương (anh 16/11 — 
 const SAT = () => require("./sat-thu.js"); // Boss Sát thủ chung (anh 03/11)
 
 const N = DO.NOI, CFG = N.CFG.quaiChung || {};
-const BOT_Z = 319, BOT_BAT = process.env.VL_BOT_LUYEN_CONG === "1";
-let _botMod = null, _botMap = undefined, _botMapLoi = false, _botMapWait = false;
+const BOT_Z = 319, BOT_BAT = process.env.VL_BOT_LUYEN_CONG === "1", BOT_CAST_MS = 450;
+// ponytail: curated 1-per-faction attack skills (skip traps/auras/passive/dash); widen to catalog scan + skill-style profiles when bot learns combos
+const BOT_SKILLS = [
+  ["shaolin", 19], ["tianwang", 32], ["tangmen", 249], ["wudu", 71], ["emei", 88],
+  ["cuiyan", 108], ["gaibang", 128], ["tianren", 148], ["wudang", 165], ["kunlun", 182],
+];
+let _botMod = null, _botMap = undefined, _botMapLoi = false, _botMapWait = false, _botCat = undefined;
+function botCatalogs(load = (p) => require(p)) {
+  if (_botCat !== undefined) return _botCat;
+  try {
+    const sk = load("../assets/web/skill/skills.json"), vc = load("../assets/web/vocong/vocong.json");
+    if (!sk || !Array.isArray(sk.factions) || !sk.skills || !vc || !vc.sk) return (_botCat = null);
+    return (_botCat = { factions: sk.factions, skills: sk.skills, vcSk: vc.sk });
+  } catch { return (_botCat = null); }
+}
+function botPickLevel(z, rng = Math.random) {
+  const rv = rng(), r = Number.isFinite(rv) ? rv : 0;
+  const lo = Math.max(1, Math.floor(+((z && z.lo)) || 70)), hi = Math.max(lo, Math.floor(+((z && z.hi)) || lo));
+  return lo + Math.min(hi - lo, Math.floor(Math.max(0, Math.min(0.999999999999, r)) * (hi - lo + 1)));
+}
+function botRollProfile(z, cat, rng = Math.random, curated = BOT_SKILLS) {
+  const lvl = botPickLevel(z, rng);
+  if (!cat || !Array.isArray(cat.factions) || !cat.skills || !cat.vcSk) return { lvl };
+  const facByKey = new Map(cat.factions.map((f) => [f && f.key, f]));
+  const cands = [];
+  for (const [key, id] of curated) {
+    const f = facByKey.get(key), sk = cat.skills[id], vc = cat.vcSk[id];
+    const req = Math.max(1, Number(sk && sk.req) || 1);
+    if (!f || !Array.isArray(f.skills) || !f.skills.includes(id) || !sk || !vc || req > lvl) continue;
+    const maxLv = Math.max(1, Number(sk.max) || 20);
+    cands.push({ lvl, fac: f.key, facName: f.n || f.key, skillId: id, skillLv: Math.max(1, Math.min(maxLv, lvl - req + 1)) });
+  }
+  if (!cands.length) return { lvl };
+  const rv = rng(), r = Number.isFinite(rv) ? rv : 0;
+  return cands[Math.min(cands.length - 1, Math.floor(Math.max(0, Math.min(0.999999999999, r)) * cands.length))];
+}
 function botMap319() {
   if (_botMap !== undefined) return _botMap;
   if (_botMapWait) return null;
@@ -80,14 +114,24 @@ function botTao() {
   try { _botMod = _botMod || require("./bot-luyen-cong.js").taoBotLuyenCong; return _botMod(); }
   catch (e) { if (!_botMapLoi) { _botMapLoi = true; console.error("Bot luyện công 319:", e.message); } return null; }
 }
-const botKhac = (cu, moi) => (!cu && !moi) ? false : (!cu || !moi) ? true : cu.x !== moi.x || cu.y !== moi.y || cu.dir !== moi.dir || cu.act !== moi.act || cu.atkN !== moi.atkN;
-function botBuoc(P, M, t) {
-  if (!BOT_BAT || P.bai !== BOT_Z || !P.botCtl) return;
-  const nguoi = new Map(), TG = require("./the-gioi.js");
-  for (const tk of P.trong.keys()) {
-    if (!M.has(tk) || (P.cu && P.cu.has(tk))) continue;
-    const p = TG.dangChoi(tk);
-    if (p && p.zone === BOT_Z && p.chung === 1 && Number.isFinite(p.x) && Number.isFinite(p.y)) nguoi.set(tk, { x: p.x, y: p.y });
+const botCastKhac = (a, b) => (!a && !b) ? false : (!a || !b) ? true : a.n !== b.n || a.x !== b.x || a.y !== b.y || a.at !== b.at;
+const botProfKhac = (a, b) => (!a && !b) ? false : (!a || !b) ? true : a.lvl !== b.lvl || a.fac !== b.fac || a.facName !== b.facName || a.skillId !== b.skillId || a.skillLv !== b.skillLv;
+const botKhac = (cu, moi) => (!cu && !moi) ? false : (!cu || !moi) ? true : cu.x !== moi.x || cu.y !== moi.y || cu.dir !== moi.dir || cu.act !== moi.act || cu.atkN !== moi.atkN || botProfKhac(cu, moi) || botCastKhac(cu.cast, moi.cast);
+function botBuoc(P, M, t, opts) {
+  if (!P || (!opts && (!BOT_BAT || P.bai !== BOT_Z)) || !P.botCtl) return;
+  const o = opts || {};
+  const z = o.zone !== undefined ? o.zone : N.ZONES.get(BOT_Z);
+  const loadCat = o.getCatalogs || botCatalogs;
+  const rng = o.rng || Math.random;
+  const map = o.map !== undefined ? o.map : botMap319();
+  const nguoi = o.nguoi || new Map();
+  if (!o.nguoi) {
+    const TG = require("./the-gioi.js");
+    for (const tk of P.trong.keys()) {
+      if (!M.has(tk) || (P.cu && P.cu.has(tk))) continue;
+      const p = TG.dangChoi(tk);
+      if (p && p.zone === BOT_Z && p.chung === 1 && Number.isFinite(p.x) && Number.isFinite(p.y)) nguoi.set(tk, { x: p.x, y: p.y });
+    }
   }
   const quai = [];
   for (const m of P.q.values()) {
@@ -96,16 +140,35 @@ function botBuoc(P, M, t) {
     const x = v && Number.isFinite(v[0]) ? v[0] : m.x, y = v && Number.isFinite(v[1]) ? v[1] : m.y;
     quai.push({ uid: m.uid, x, y, mau: m.mau, mauMax: m.mauMax, boss: m.boss, ta: m.ta, sat: m.sat, dmg: m.dmg });
   }
-  const hitUid = P.botCtl.tick(t, nguoi, quai, botMap319());
-  const st = P.botCtl.trangThai();
+  const hadBot = !!P.botSt;
+  const hitUid = P.botCtl.tick(t, nguoi, quai, map);
+  const raw = P.botCtl.trangThai();
+  if (!raw) {
+    P.botProf = null; P.botCast = null;
+    if (P.botSt !== null) { P.botSt = null; P.doi = true; }
+    return;
+  }
+  if (!hadBot || !P.botProf) P.botProf = botRollProfile(z, loadCat(), rng);
+  if (P.botCast && t - P.botCast.at >= BOT_CAST_MS) P.botCast = null;
+  let killMob = null;
+  if (hitUid != null) {
+    const m = P.q.get(hitUid);
+    if (m && m.mau > 0 && !m.boss && !m.ta && !m.sat && m.dmg.size === 0 && (!m.danhLuc || t - m.danhLuc >= 12000)) {
+      const v = P.vt.get(m.uid);
+      const tx = v && Number.isFinite(v[0]) ? v[0] : m.x, ty = v && Number.isFinite(v[1]) ? v[1] : m.y;
+      P.botCast = { n: raw.atkN, x: Math.round(tx), y: Math.round(ty), at: t };
+      const dmg = Math.max(1, Math.floor(m.mauMax * 0.05));
+      m.mau = Math.max(0, m.mau - dmg);
+      P.hpDoi.add(m.uid); P.doi = true;
+      if (m.mau <= 0) killMob = m;
+    }
+  }
+  const st = { ...raw, ...P.botProf, ...(P.botCast ? { cast: P.botCast } : {}) };
   if (botKhac(P.botSt, st)) { P.botSt = st; P.doi = true; }
-  if (hitUid == null) return;
-  const m = P.q.get(hitUid);
-  if (!m || !(m.mau > 0) || m.boss || m.ta || m.sat || m.dmg.size > 0 || (m.danhLuc && t - m.danhLuc < 12000)) return;
-  const dmg = Math.max(1, Math.floor(m.mauMax * 0.05));
-  m.mau = Math.max(0, m.mau - dmg);
-  P.hpDoi.add(m.uid); P.doi = true;
-  if (m.mau <= 0) { chet(P, m); phat(P); }
+  if (killMob) {
+    if (o.onKill) o.onKill(killMob);
+    else { chet(P, killMob); phat(P); }
+  }
 }
 // quái bản chung mạnh hơn (anh 03/11 "bãi quái chung quái mạnh hơn 50% bao gồm cả tần suất tấn công" — cau-hinh.json quaiChung.manh): máu nhân ở
 // đây lúc chủ bãi sinh (qcSinh); sát thương + tần suất đánh trình duyệt nhân (luật quaiChung.manh — src/game/quaichung.js)
@@ -128,7 +191,7 @@ function phong(bai) {
   let P = PH.get(bai);
   if (!P) {
     P = { bai, q: new Map(), vt: new Map(), trong: new Map(), song: new Map(), an: new Set(), chu: null, ack: new Map(), han: new Map(), dan: new Map(),
-      seq: 0, sv: 0, daSpec: new Map(), doi: true, guiLuc: 0, rong: 0, hpDoi: new Set(), hpLuc: 0, nk: [], ...(BOT_BAT && bai === BOT_Z ? { botCtl: botTao(), botSt: null } : {}) };
+      seq: 0, sv: 0, daSpec: new Map(), doi: true, guiLuc: 0, rong: 0, hpDoi: new Set(), hpLuc: 0, nk: [], ...(BOT_BAT && bai === BOT_Z ? { botCtl: botTao(), botSt: null, botProf: null, botCast: null } : {}) };
     PH.set(bai, P);
   }
   return P;
@@ -367,4 +430,4 @@ function nhanThuong(h, tk, key, admin) {
   return out.kn || out.nhan.length || out.roi.length || out.tin.length ? out : null;
 }
 
-module.exports = { bat, danh, nhanThuong, nvSat, BAI };
+module.exports = { bat, danh, nhanThuong, nvSat, BAI, _bot: { BOT_SKILLS, botCatalogs, botPickLevel, botRollProfile, botBuoc, botKhac } };

@@ -659,7 +659,7 @@ export class World {
   themMoc(name, tr) { const e = this.others.get(name); if (e && Array.isArray(tr)) this._moc(e, tr, false, true); }
   datBotLuyenCong(bot, tsMs) {
     if (!bot || typeof bot !== "object") { this.botLuyenCong = null; return; }
-    const { x, y, dir, act, atkN } = bot;
+    const { x, y, dir, act, atkN, lvl, facName, skillId, skillLv, cast } = bot;
     if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isInteger(dir) || dir < 0 || dir > 7) { this.botLuyenCong = null; return; }
     if ((act !== "stand" && act !== "run" && act !== "attack") || !Number.isInteger(atkN) || atkN < 0) { this.botLuyenCong = null; return; }
     let e = this.botLuyenCong;
@@ -669,11 +669,32 @@ export class World {
         look: this.P.jx.look({ sex: "m" }),
         x, y, dir, t: 0, act: "stand", atkN: 0,
         buf: [], gap: 0.1, lag: 0.2, off: 0, fight: false,
+        castN: 0,
       };
     }
+    const okLvl = Number.isInteger(lvl) && lvl >= 1 && lvl <= R.MAX_LEVEL;
+    const fac = typeof facName === "string" ? facName.trim().slice(0, 32) : "";
+    if (okLvl && fac) e.name = `Luyện công · Cấp ${lvl} (${fac})`;
+    else if (okLvl) e.name = `Luyện công · Cấp ${lvl} (NPC)`;
+    else if (fac) e.name = `Luyện công (${fac})`;
+    else e.name = "Luyện công (NPC)";
+    e.lvl = okLvl ? lvl : undefined;
     const rawMs = Number.isFinite(tsMs) ? tsMs : this.time * 1000;
     const ms = Math.max(0, Math.round(rawMs));
     this._moc(e, [[ms, x, y, dir, act, atkN, 1, 1]], false, true);
+    if (
+      this.P.settings?.hieuUngNguoi !== false &&
+      typeof this.chieuAo === "function" &&
+      Number.isInteger(skillId) && skillId > 0 &&
+      Number.isInteger(skillLv) && skillLv > 0 &&
+      cast && typeof cast === "object" &&
+      Number.isInteger(cast.n) && cast.n > 0 && cast.n <= atkN &&
+      Number.isFinite(cast.x) && Number.isFinite(cast.y) &&
+      cast.n > (e.castN || 0)
+    ) {
+      e.castN = cast.n;
+      this.chieuAo(skillId, skillLv, e, [cast.x, cast.y]);
+    }
   }
   // Đang dịch chuyển giữa 2 mốc thì chạy, hướng theo đường đi; đứng giữa 2 mốc thì theo động tác người đó báo (đứng / ngồi / chết / bị
   // đánh). Đòn mới (atkN đổi) đánh lại từ khung đầu, đánh hết đòn mới đổi động tác khác.

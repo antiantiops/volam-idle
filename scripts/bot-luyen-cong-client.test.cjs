@@ -298,4 +298,84 @@ describe("bot-luyen-cong client rendering", () => {
 
     QuaiChung.ganWorld(null);
   });
+
+  it("renders lvl/faction label, plays visual-only chieuAo once per cast.n, ignores invalid casts, and resets on respawn", async () => {
+    const { World, QuaiChung } = await loadMods();
+    const w = makeWorld(World, 319);
+    const chieuCalls = [];
+    w.chieuAo = (id, lv, e, pt) => {
+      chieuCalls.push({ id, lv, e, pt: [...pt] });
+    };
+    QuaiChung.ganWorld(w);
+
+    // Profile label with lvl + facName, bounded name, and no cast yet
+    const baseBot = { x: 640, y: 520, dir: 2, act: "stand", atkN: 0, lvl: 75, fac: "wudang", facName: "Võ Đang", skillId: 165, skillLv: 15 };
+    QuaiChung.capNhat(makeSnap(baseBot, { gio: 30000 }));
+    assert.equal(w.botLuyenCong.name, "Luyện công · Cấp 75 (Võ Đang)");
+    assert.equal(w.botLuyenCong.lvl, 75);
+    assert.equal(chieuCalls.length, 0);
+
+    const texts = [];
+    w.update(0.05);
+    w.draw(makeCtx(texts), { x: 0, y: 0 }, 1280, 720);
+    assert.ok(texts.some((t) => t.s === "Luyện công · Cấp 75 (Võ Đang)"));
+
+    // Valid cast triggers exact chieuAo once even if repeated across snapshots or atkN advances without new cast.n
+    QuaiChung.capNhat(makeSnap({ ...baseBot, act: "attack", atkN: 1, cast: { n: 1, x: 700, y: 560, at: 30200 } }, { gio: 30200 }));
+    assert.equal(chieuCalls.length, 1);
+    assert.equal(chieuCalls[0].id, 165);
+    assert.equal(chieuCalls[0].lv, 15);
+    assert.equal(chieuCalls[0].e, w.botLuyenCong);
+    assert.deepEqual(chieuCalls[0].pt, [700, 560]);
+
+    QuaiChung.capNhat(makeSnap({ ...baseBot, act: "attack", atkN: 1, cast: { n: 1, x: 700, y: 560, at: 30200 } }, { gio: 30400 }));
+    QuaiChung.capNhat(makeSnap({ ...baseBot, act: "stand", atkN: 2, cast: { n: 1, x: 700, y: 560, at: 30200 } }, { gio: 30600 }));
+    assert.equal(chieuCalls.length, 1);
+
+    // Respects hieuUngNguoi === false without advancing castN; then new cast when enabled plays once
+    w.P.settings.hieuUngNguoi = false;
+    QuaiChung.capNhat(makeSnap({ ...baseBot, act: "attack", atkN: 2, cast: { n: 2, x: 710, y: 570, at: 30800 } }, { gio: 30800 }));
+    assert.equal(chieuCalls.length, 1);
+    w.P.settings.hieuUngNguoi = true;
+
+    // Invalid / out-of-order casts ignored
+    QuaiChung.capNhat(makeSnap({ ...baseBot, act: "attack", atkN: 2, cast: { n: 0, x: 710, y: 570, at: 30900 } }, { gio: 30900 }));
+    QuaiChung.capNhat(makeSnap({ ...baseBot, act: "attack", atkN: 2, cast: { n: 3, x: 710, y: 570, at: 31000 } }, { gio: 31000 })); // cast.n > atkN
+    QuaiChung.capNhat(makeSnap({ ...baseBot, act: "attack", atkN: 3, cast: { n: 3, x: NaN, y: 570, at: 31100 } }, { gio: 31100 }));
+    QuaiChung.capNhat(makeSnap({ ...baseBot, act: "attack", atkN: 3, skillId: 0, cast: { n: 3, x: 710, y: 570, at: 31200 } }, { gio: 31200 }));
+    QuaiChung.capNhat(makeSnap({ ...baseBot, act: "attack", atkN: 3, skillLv: -1, cast: { n: 3, x: 710, y: 570, at: 31300 } }, { gio: 31300 }));
+    QuaiChung.capNhat(makeSnap({ ...baseBot, act: "attack", atkN: 3, cast: { n: 1, x: 710, y: 570, at: 31400 } }, { gio: 31400 })); // stale cast.n <= 1
+    assert.equal(chieuCalls.length, 1);
+
+    // New valid cast.n > prior plays once, even when cast.n < atkN
+    QuaiChung.capNhat(makeSnap({ ...baseBot, act: "attack", atkN: 4, cast: { n: 2, x: 720, y: 580, at: 31500 } }, { gio: 31500 }));
+    assert.equal(chieuCalls.length, 2);
+    assert.deepEqual(chieuCalls[1].pt, [720, 580]);
+
+    // Invalid optional lvl/facName preserves fallback name without throwing
+    QuaiChung.capNhat(makeSnap({ x: 640, y: 520, dir: 2, act: "stand", atkN: 4, lvl: 999, facName: 123 }, { gio: 31600 }));
+    assert.equal(w.botLuyenCong.name, "Luyện công (NPC)");
+    assert.equal(w.botLuyenCong.lvl, undefined);
+
+    // Despawn clears entity; respawn resets castN so cast.n=1 triggers again & keeps lists unpolluted
+    QuaiChung.capNhat(makeSnap(null, { gio: 31800 }));
+    assert.equal(w.botLuyenCong, null);
+
+    QuaiChung.capNhat(makeSnap({
+      x: 800, y: 600, dir: 4, act: "attack", atkN: 1,
+      lvl: 72, facName: "Thiếu Lâm", skillId: 19, skillLv: 10,
+      cast: { n: 1, x: 850, y: 620, at: 32000 },
+    }, { gio: 32000 }));
+    assert.equal(w.botLuyenCong.name, "Luyện công · Cấp 72 (Thiếu Lâm)");
+    assert.equal(chieuCalls.length, 3);
+    assert.equal(chieuCalls[2].id, 19);
+    assert.equal(chieuCalls[2].lv, 10);
+    assert.deepEqual(chieuCalls[2].pt, [850, 620]);
+    assert.equal(w.others.size, 0);
+    assert.equal(w.ptKhac.size, 0);
+    assert.equal(w.npcs.length, 0);
+    assert.equal(w.mobs.length, 0);
+
+    QuaiChung.ganWorld(null);
+  });
 });
