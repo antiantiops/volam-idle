@@ -487,4 +487,186 @@ describe("bot-luyen-cong profile & cast metadata", () => {
     assert.equal(qcOff._bot.botDuoc(319), false);
     assert.equal(qcOff._bot.botDuoc(224), false);
   });
+
+  it("wires botOpts.castMs from verified skill metadata (1000ms at spd=0) and preserves default when metadata/phys is missing", () => {
+    const qc = loadQuaiChungMocked();
+    assert.equal(qc._bot.botCastMs(), 1000);
+    assert.equal(qc._bot.botCastMs(0), 1000);
+    assert.equal(qc._bot.botCastMs(21), 778);
+
+    const catReal = makeCatalog({ req: 50, max: 20 });
+    catReal.skills[182].phys = 0; // kunlun real-shaped metadata includes phys flag
+    // leave bot0's sibling skill without phys flag to verify missing metadata skips override
+
+    const catNoPhys = makeCatalog({ req: 50, max: 20 });
+
+    const seenOpts = [];
+    const inner = taoDoiLuyenCong();
+    const wrappedCtl = {
+      ghiDanh: inner.ghiDanh,
+      tick(t, nguoi, quai, map, botOpts) {
+        seenOpts.push(botOpts);
+        return inner.tick(t, nguoi, quai, map, botOpts);
+      },
+      trangThai: inner.trangThai,
+    };
+    const P = makeRoom(wrappedCtl);
+    const openMap = { walkable: () => true, clear: () => true };
+    const nguoi = new Map([["p1", { x: 1000, y: 1000 }]]);
+    P.q.set(1, { uid: 1, tpl: 1, lv: 75, he: 0, x: 1015, y: 1000, mau: 1000, mauMax: 1000, boss: 0, ta: 0, sat: 0, dmg: new Map() });
+    P.q.set(2, { uid: 2, tpl: 1, lv: 75, he: 0, x: 1200, y: 1000, mau: 1000, mauMax: 1000, boss: 0, ta: 0, sat: 0, dmg: new Map() });
+
+    let activeCat = catReal;
+    let i = 0;
+    const rng = () => [0.0, 0.95, 0.0, 0.45][i++ % 4];
+    const step = (t) => qc._bot.botBuoc(P, new Map([["p1", {}]]), t, {
+      zone: { id: 319, lo: 70, hi: 80 },
+      getCatalogs: () => activeCat,
+      map: openMap,
+      nguoi,
+      rng,
+    });
+
+    P.botCtl.ghiDanh(0, "p1", 1);
+    P.botCtl.ghiDanh(1000, "p1", 1);
+    // Spawn tick: prevById empty -> botOpts is undefined (preserves no-profile path)
+    step(3100);
+    assert.equal(seenOpts.at(-1), undefined);
+    assert.equal(P.botsSt.length, 3);
+    const kunlunBot = P.botsSt.find((b) => b.fac === "kunlun");
+    const otherBots = P.botsSt.filter((b) => b.fac !== "kunlun");
+    assert.ok(kunlunBot && otherBots.length === 2);
+
+    // Next tick with real-shaped skill metadata: kunlun receives castMs=1000, siblings (missing phys) omitted
+    step(3300);
+    const opts1 = seenOpts.at(-1);
+    assert.ok(opts1 instanceof Map);
+    assert.deepEqual(opts1.get(kunlunBot.id), { castMs: 1000 });
+    for (const ob of otherBots) assert.equal(opts1.has(ob.id), false);
+
+    // Missing phys / missing catalog falls back to undefined (default stagger cadence preserved)
+    activeCat = catNoPhys;
+    step(3500);
+    assert.equal(seenOpts.at(-1), undefined);
+
+    activeCat = null;
+    step(3700);
+    assert.equal(seenOpts.at(-1), undefined);
+  });
+
+  it("applies active buff attack/cast speed per-row until capped expiry, keeps early refresh, and resets to 1000ms when expired", () => {
+    const qc = loadQuaiChungMocked();
+    const cat = makeCatalog({ req: 50, max: 20 });
+    cat.factions[0].skills.push(273);
+    cat.skills[19].phys = 1; // shaolin physical attack skill
+    cat.skills[273] = {
+      req: 50,
+      max: 20,
+      eqt: -2,
+      target: { self: 1 },
+      lv: {
+        attackspeed_v: Array.from({ length: 20 }, (_, idx) => [11 + idx, 180, 0]),
+        attackspeed_yan_v: Array.from({ length: 20 }, () => [20, 180, 0]),
+        addcolddamage_v: Array.from({ length: 20 }, () => [25, 180, 45]),
+      },
+    };
+    cat.vcSk[273] = { state: 170, mis: 273 };
+
+    const seenOpts = [];
+    const seenEvents = [];
+    const inner = taoDoiLuyenCong();
+    const wrappedCtl = {
+      ghiDanh: inner.ghiDanh,
+      tick(t, nguoi, quai, map, botOpts) {
+        seenOpts.push(botOpts);
+        const ev = inner.tick(t, nguoi, quai, map, botOpts);
+        seenEvents.push(ev);
+        return ev;
+      },
+      trangThai: inner.trangThai,
+    };
+    const P = makeRoom(wrappedCtl);
+    const openMap = { walkable: () => true, clear: () => true };
+    const nguoi = new Map([["p1", { x: 1000, y: 1000 }]]);
+    P.q.set(1, { uid: 1, tpl: 1, lv: 75, he: 0, x: 1015, y: 1000, mau: 1000, mauMax: 1000, boss: 0, ta: 0, sat: 0, dmg: new Map() });
+    P.q.set(2, { uid: 2, tpl: 1, lv: 75, he: 0, x: 1250, y: 1000, mau: 10000, mauMax: 10000, boss: 0, ta: 0, sat: 0, dmg: new Map() });
+    P.q.set(3, { uid: 3, tpl: 1, lv: 75, he: 0, x: 920, y: 1200, mau: 10000, mauMax: 10000, boss: 0, ta: 0, sat: 0, dmg: new Map() });
+    P.q.set(4, { uid: 4, tpl: 1, lv: 75, he: 0, x: 920, y: 800, mau: 10000, mauMax: 10000, boss: 0, ta: 0, sat: 0, dmg: new Map() });
+
+    const step = (t) => qc._bot.botBuoc(P, new Map([["p1", {}]]), t, {
+      zone: { id: 319, lo: 70, hi: 80 },
+      getCatalogs: () => cat,
+      map: openMap,
+      nguoi,
+      rng: () => 0,
+    });
+
+    P.botCtl.ghiDanh(0, "p1", 1);
+    P.botCtl.ghiDanh(1000, "p1", 1);
+    step(3100);
+    const shaolinBot = () => P.botsSt.find((b) => b.fac === "shaolin");
+    const sb0 = shaolinBot();
+    assert.ok(sb0 && sb0.lvl === 70 && sb0.skillId === 19);
+
+    // Tick 3300: requests buff 273 at base 1000ms and executes controller buff event
+    step(3300);
+    assert.deepEqual(seenOpts.at(-1).get(sb0.id), { castMs: 1000, buff: { skillId: 273, skillLv: 20, castMs: 1000 } });
+    assert.deepEqual(seenEvents.at(-1).filter((e) => e.id === sb0.id), [{ id: sb0.id, buff: { skillId: 273, skillLv: 20 } }]);
+    assert.deepEqual(shaolinBot().buff, { skillId: 273, skillLv: 20, at: 3300, until: 13300 });
+
+    // During buff cast window & far from expiry: faster castMs=667 (spd=50), no repeat buff
+    step(3800);
+    assert.deepEqual(seenOpts.at(-1).get(sb0.id), { castMs: 667 });
+    assert.equal(seenEvents.at(-1).some((e) => e.id === sb0.id), false);
+
+    // Physical strikes follow faster 667ms cadence (<1000ms), no repeat far from expiry
+    step(4300);
+    assert.deepEqual(seenOpts.at(-1).get(sb0.id), { castMs: 667 });
+    assert.deepEqual(seenEvents.at(-1).filter((e) => e.id === sb0.id), [{ id: sb0.id, uid: 2 }]);
+    const atkAfter1 = shaolinBot().atkN;
+
+    step(4966);
+    assert.equal(shaolinBot().atkN, atkAfter1);
+    step(4967);
+    assert.deepEqual(seenOpts.at(-1).get(sb0.id), { castMs: 667 });
+    assert.deepEqual(seenEvents.at(-1).filter((e) => e.id === sb0.id), [{ id: sb0.id, uid: 2 }]);
+    assert.equal(shaolinBot().atkN, atkAfter1 + 1);
+
+    // Just outside renewal lead (1501ms left): no repeat; at 1500ms left: near-expiry renewal request while still 667ms
+    step(11799);
+    assert.deepEqual(seenOpts.at(-1).get(sb0.id), { castMs: 667 });
+    step(11800);
+    assert.deepEqual(seenOpts.at(-1).get(sb0.id), { castMs: 667, buff: { skillId: 273, skillLv: 20, castMs: 1000 } });
+
+    // At expiry (t=13300): active speed expired -> reverts to 1000ms and requests/executes renewal
+    step(13300);
+    assert.deepEqual(seenOpts.at(-1).get(sb0.id), { castMs: 1000, buff: { skillId: 273, skillLv: 20, castMs: 1000 } });
+    assert.deepEqual(seenEvents.at(-1).filter((e) => e.id === sb0.id), [{ id: sb0.id, buff: { skillId: 273, skillLv: 20 } }]);
+
+    // Direct botBuildOpts boundary checks: castspeed_v + castspeed_yan_v, per-row ticks vs cur.until cap, invalid/non-positive rows & non-finite times
+    const castCat = makeCatalog({ req: 50, max: 20 });
+    castCat.factions[0].skills.push(273);
+    castCat.skills[19].phys = 0;
+    castCat.skills[273] = {
+      req: 50,
+      max: 20,
+      eqt: -2,
+      target: { self: 1 },
+      lv: {
+        castspeed_v: [[20, 90, 0]],       // 5000ms
+        castspeed_yan_v: [[30, 180, 0]],  // 10000ms
+        attackspeed_v: [[99, 180, 0]],    // ignored for phys=0
+      },
+    };
+    castCat.vcSk[273] = { state: 170 };
+    const mkPrev = (buff) => new Map([[1, { id: 1, fac: "shaolin", lvl: 70, skillId: 19, skillLv: 20, buff }]]);
+    assert.equal(qc._bot.botBuildOpts(mkPrev({ skillId: 273, skillLv: 20, at: 1000, until: 11000 }), castCat, 5999).get(1).castMs, 667); // 20+30=50
+    assert.equal(qc._bot.botBuildOpts(mkPrev({ skillId: 273, skillLv: 20, at: 1000, until: 11000 }), castCat, 6000).get(1).castMs, 723); // only 30 left
+    assert.equal(qc._bot.botBuildOpts(mkPrev({ skillId: 273, skillLv: 20, at: 1000, until: 7000 }), castCat, 7000).get(1).castMs, 1000); // capped by cur.until
+    assert.equal(qc._bot.botBuildOpts(mkPrev({ skillId: 273, skillLv: 20, at: Number.NaN, until: 11000 }), castCat, 2000).get(1).castMs, 1000);
+    assert.equal(qc._bot.botBuildOpts(mkPrev({ skillId: 273, skillLv: 20, at: 1000, until: 11000 }), castCat, Number.NaN).get(1).castMs, 1000);
+    castCat.skills[273].lv.castspeed_v = [[-10, 180, 0]];
+    castCat.skills[273].lv.castspeed_yan_v = [["30", 180, 0]];
+    assert.equal(qc._bot.botBuildOpts(mkPrev({ skillId: 273, skillLv: 20, at: 1000, until: 11000 }), castCat, 2000).get(1).castMs, 1000);
+  });
 });

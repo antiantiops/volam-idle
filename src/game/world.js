@@ -659,7 +659,7 @@ export class World {
   // mốc qua kênh tức thời (main.js Net.wsNghe("vt") — may-chu/the-gioi.js): người chưa thấy qua nhịp thì bỏ (nhịp tạo người, đồ mặc…)
   themMoc(name, tr) { const e = this.others.get(name); if (e && Array.isArray(tr)) this._moc(e, tr, false, true); }
   _capNhatBotLuyenCongEntity(id, bot, tsMs, prev) {
-    const { x, y, dir, act, atkN, lvl, facName, skillId, skillLv, cast, sex, look } = bot;
+    const { x, y, dir, act, atkN, lvl, facName, skillId, skillLv, cast, buff, sex, look } = bot;
     if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isInteger(dir) || dir < 0 || dir > 7) return null;
     if ((act !== "stand" && act !== "run" && act !== "attack") || !Number.isInteger(atkN) || atkN < 0) return null;
     const safeSex = sex === "f" ? "f" : "m";
@@ -694,20 +694,40 @@ export class World {
     e.lvl = okLvl ? lvl : undefined;
     const rawMs = Number.isFinite(tsMs) ? tsMs : this.time * 1000;
     const ms = Math.max(0, Math.round(rawMs));
-    this._moc(e, [[ms, x, y, dir, act, atkN, 1, 1]], false, true);
-    if (
-      this.P.settings?.hieuUngNguoi !== false &&
-      typeof this.chieuAo === "function" &&
-      Number.isInteger(skillId) && skillId > 0 &&
-      Number.isInteger(skillLv) && skillLv > 0 &&
+    const fxOn = this.P.settings?.hieuUngNguoi !== false;
+    const isBuffCast = !!(cast && typeof cast === "object" && cast.kind === "buff");
+    const castSkillId = isBuffCast ? cast.skillId : (cast && typeof cast === "object" && cast.skillId !== undefined ? cast.skillId : skillId);
+    const castSkillLv = isBuffCast ? cast.skillLv : (cast && typeof cast === "object" && cast.skillLv !== undefined ? cast.skillLv : skillLv);
+    const validCast =
+      Number.isInteger(castSkillId) && castSkillId > 0 &&
+      Number.isInteger(castSkillLv) && castSkillLv > 0 &&
       cast && typeof cast === "object" &&
       Number.isInteger(cast.n) && cast.n > 0 && cast.n <= atkN &&
-      Number.isFinite(cast.x) && Number.isFinite(cast.y) &&
-      cast.n > (e.castN || 0)
-    ) {
-      e.castN = cast.n;
-      this.chieuAo(skillId, skillLv, e, [cast.x, cast.y]);
+      Number.isFinite(cast.x) && Number.isFinite(cast.y);
+    this._moc(e, [[ms, x, y, dir, act, atkN, isBuffCast && validCast ? 3 : 1, 1]], false, true);
+    if (fxOn && validCast && cast.n > (e.castN || 0)) {
+      if (isBuffCast) {
+        e.castN = cast.n;
+        if (typeof this.vfxAt === "function") {
+          const k = this.P.vc?.sk?.(castSkillId);
+          if (k && k.pre) this.vfxAt(k.pre, null, e, 0);
+        }
+      } else if (typeof this.chieuAo === "function") {
+        e.castN = cast.n;
+        this.chieuAo(castSkillId, castSkillLv, e, [cast.x, cast.y]);
+      }
     }
+    const buffId = buff && typeof buff === "object" ? buff.skillId : null;
+    const buffLv = buff && typeof buff === "object" ? buff.skillLv : null;
+    const buffState =
+      fxOn &&
+      Number.isInteger(buffId) && buffId > 0 &&
+      Number.isInteger(buffLv) && buffLv > 0 &&
+      Number.isFinite(buff.at) && Number.isFinite(buff.until) &&
+      buff.at <= ms && ms < buff.until
+        ? this.P.vc?.sk?.(buffId)?.state
+        : 0;
+    e.bl = buffState && (typeof buffState !== "number" || buffState > 0) ? [buffId] : null;
     return e;
   }
   datBotLuyenCongList(bots, tsMs) {

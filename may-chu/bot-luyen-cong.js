@@ -24,6 +24,8 @@ const ATK_RANGE_MAX = 280;
 const RUN_SPEED = 135; // 10 * 18 * 0.75 px/s (src/game/world.js)
 const ATK_COOLDOWN_MS = 1000;
 const ATK_ANIM_MS = 450;
+const CAST_MS_MIN = 350;
+const CAST_MS_MAX = 2000;
 const PATH_REUSE_DIST = 48;
 const PATH_REUSE_MS = 600;
 const STUCK_TARGET_MS = 1200;
@@ -135,13 +137,33 @@ function pointOverlap(x, y, livePlayers, extraPoints) {
   return false;
 }
 
-function getBotRange(botOpts, botId) {
-  if (!botOpts || typeof botOpts !== "object") return ATTACK_RANGE;
-  const opt = typeof botOpts.get === "function"
+function getBotOpt(botOpts, botId) {
+  if (!botOpts || typeof botOpts !== "object") return null;
+  return typeof botOpts.get === "function"
     ? (botOpts.get(botId) ?? botOpts.get(String(botId)))
     : botOpts[botId];
+}
+
+function getBotRange(botOpts, botId) {
+  const opt = getBotOpt(botOpts, botId);
   if (!opt || !Number.isFinite(opt.range)) return ATTACK_RANGE;
   return Math.max(ATK_RANGE_MIN, Math.min(ATK_RANGE_MAX, opt.range));
+}
+
+function getBotCastMs(botOpts, botId) {
+  const opt = getBotOpt(botOpts, botId);
+  if (!opt || !Number.isFinite(opt.castMs)) return null;
+  return Math.max(CAST_MS_MIN, Math.min(CAST_MS_MAX, opt.castMs));
+}
+
+function getBotBuff(botOpts, botId) {
+  const opt = getBotOpt(botOpts, botId);
+  const b = opt && typeof opt === "object" ? opt.buff : null;
+  if (!b || typeof b !== "object") return null;
+  if (!Number.isInteger(b.skillId) || b.skillId <= 0) return null;
+  if (!Number.isInteger(b.skillLv) || b.skillLv <= 0) return null;
+  if (!Number.isFinite(b.castMs) || b.castMs < CAST_MS_MIN || b.castMs > CAST_MS_MAX) return null;
+  return { skillId: b.skillId, skillLv: b.skillLv, castMs: b.castMs };
 }
 
 // ponytail: deterministic patrol + cached map.path waypoints (1.5s stuck recovery); upgrade to formation/crowd steering if map obstacles grow denser.
@@ -448,6 +470,7 @@ function taoBoDieuKhien(maxBots = 1) {
           targetUid: null,
           lastAtkAt: -Infinity,
           atkAnimUntil: -Infinity,
+          buffUntil: -Infinity,
           lastCombatHitAt: lastHitAt,
           exiting: false,
           exitStartedAt: 0,
@@ -607,6 +630,10 @@ function taoBoDieuKhien(maxBots = 1) {
     const strikes = [];
     const dtSec = justSpawned || prevT === null ? 0 : Math.max(0, t - prevT) / 1000;
     for (const b of activeBots) {
+      if (t < b.buffUntil) {
+        b.act = "attack";
+        continue;
+      }
       let target = b.targetUid !== null ? liveMobs.get(b.targetUid) : null;
       if (!target) {
         const picked = pickTarget(liveMobs, b, map, reserved, t);
@@ -694,7 +721,11 @@ function taoBoDieuKhien(maxBots = 1) {
 
       const atkRange = getBotRange(botOpts, b.id);
       const stopDist = Math.max(52, atkRange - 15);
-      const atkCooldown = maxBots > 1 ? ATK_COOLDOWN_MS + ((b.id - 1) % 5) * 90 : ATK_COOLDOWN_MS;
+      const customCastMs = getBotCastMs(botOpts, b.id);
+      const atkCooldown = customCastMs !== null
+        ? customCastMs
+        : (maxBots > 1 ? ATK_COOLDOWN_MS + ((b.id - 1) % 5) * 90 : ATK_COOLDOWN_MS);
+      const atkAnimMs = customCastMs !== null ? customCastMs : ATK_ANIM_MS;
 
       let dist = Math.hypot(target.x - b.x, target.y - b.y);
       if (b.stuckUid !== target.uid) {
@@ -759,9 +790,19 @@ function taoBoDieuKhien(maxBots = 1) {
         b.stuckY = b.y;
         b.stuckBestDist = dist;
         if (t - b.lastAtkAt >= atkCooldown) {
+          const buff = getBotBuff(botOpts, b.id);
+          if (buff) {
+            b.atkN += 1;
+            b.atkAnimUntil = t + buff.castMs;
+            b.buffUntil = t + buff.castMs;
+            b.stuckCheckAt = b.buffUntil;
+            b.act = "attack";
+            strikes.push({ id: b.id, buff: { skillId: buff.skillId, skillLv: buff.skillLv } });
+            continue;
+          }
           b.atkN += 1;
           b.lastAtkAt = t;
-          b.atkAnimUntil = t + ATK_ANIM_MS;
+          b.atkAnimUntil = t + atkAnimMs;
           b.act = "attack";
           strikes.push({ id: b.id, uid: target.uid });
           continue;
@@ -789,7 +830,7 @@ function taoBotLuyenCong() {
     ghiDanh: ctrl.ghiDanh,
     tick(t, nguoi, quai, map, botOpts) {
       const strikes = ctrl.tick(t, nguoi, quai, map, botOpts);
-      return strikes.length ? strikes[0].uid : null;
+      return strikes.length && strikes[0].uid != null ? strikes[0].uid : null;
     },
     trangThai() {
       const list = ctrl.trangThai();

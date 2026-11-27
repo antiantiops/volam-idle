@@ -492,4 +492,113 @@ describe("bot-luyen-cong client rendering", () => {
 
     QuaiChung.ganWorld(null);
   });
+
+  it("renders buff Magic code 3, optional pre vfx dedup, and e.bl state overlay with visual toggle and interval expiry", async () => {
+    const { World, QuaiChung } = await loadMods();
+    const w = makeWorld(World, 319);
+    const mocCalls = [];
+    const origMoc = World.prototype._moc;
+    w._moc = function (e, tr, don, nhanh) {
+      mocCalls.push(tr.map((r) => [...r]));
+      return origMoc.call(this, e, tr, don, nhanh);
+    };
+    const chieuCalls = [];
+    w.chieuAo = (id, lv, e, pt) => chieuCalls.push({ id, lv, e, pt: [...pt] });
+    const vfxCalls = [];
+    w.vfxAt = (k, info, e, h) => vfxCalls.push({ k, info, e, h });
+    w.P.vc = {
+      sk: (id) => (id === 157 ? { pre: "pre_157", state: 42 } : id === 158 ? { state: 43 } : id === 159 ? { pre: "pre_159" } : null),
+    };
+    QuaiChung.ganWorld(w);
+
+    const bot = { id: 101, x: 640, y: 520, dir: 2, act: "attack", atkN: 1, lvl: 75, facName: "Võ Đang", skillId: 165, skillLv: 15 };
+    const buff = { skillId: 157, skillLv: 10, at: 50000, until: 51000 };
+
+    // Valid buff cast: _moc attack code 3 (Magic), same atkN, vfxAt once, no chieuAo, active e.bl
+    QuaiChung.capNhat(makeSnap(undefined, {
+      bots: [{ ...bot, cast: { kind: "buff", skillId: 157, skillLv: 10, n: 1, x: 640, y: 520, at: 50000 }, buff }],
+      gio: 50000,
+    }));
+    const e = w.botLuyenCongList.get(101);
+    assert.equal(mocCalls.at(-1)[0][5], 1);
+    assert.equal(mocCalls.at(-1)[0][6], 3);
+    assert.equal(chieuCalls.length, 0);
+    assert.equal(vfxCalls.length, 1);
+    assert.equal(vfxCalls[0].k, "pre_157");
+    assert.equal(vfxCalls[0].e, e);
+    assert.deepEqual(e.bl, [157]);
+    w.update(0.05);
+    assert.equal(e.act, "attack");
+    assert.equal(e.attack, "Magic");
+
+    // Repeated same cast.n does not replay vfxAt; e.bl stays active inside [at, until)
+    QuaiChung.capNhat(makeSnap(undefined, {
+      bots: [{ ...bot, cast: { kind: "buff", skillId: 157, skillLv: 10, n: 1, x: 640, y: 520, at: 50000 }, buff }],
+      gio: 50200,
+    }));
+    assert.equal(vfxCalls.length, 1);
+    assert.equal(chieuCalls.length, 0);
+    assert.deepEqual(e.bl, [157]);
+
+    // hieuUngNguoi === false suppresses vfxAt/castN advance and clears e.bl, while keeping Magic code 3
+    w.P.settings.hieuUngNguoi = false;
+    QuaiChung.capNhat(makeSnap(undefined, {
+      bots: [{ ...bot, atkN: 2, cast: { kind: "buff", skillId: 157, skillLv: 10, n: 2, x: 640, y: 520, at: 50400 }, buff }],
+      gio: 50400,
+    }));
+    assert.equal(mocCalls.at(-1)[0][5], 2);
+    assert.equal(mocCalls.at(-1)[0][6], 3);
+    assert.equal(vfxCalls.length, 1);
+    assert.equal(e.castN, 1);
+    assert.equal(e.bl, null);
+
+    // Re-enabling visual effects plays pending cast.n=2 once and restores e.bl
+    w.P.settings.hieuUngNguoi = true;
+    QuaiChung.capNhat(makeSnap(undefined, {
+      bots: [{ ...bot, atkN: 2, cast: { kind: "buff", skillId: 157, skillLv: 10, n: 2, x: 640, y: 520, at: 50400 }, buff }],
+      gio: 50600,
+    }));
+    assert.equal(vfxCalls.length, 2);
+    assert.equal(e.castN, 2);
+    assert.deepEqual(e.bl, [157]);
+
+    // Invalid buff cast (bad skillId/n/coords) falls back to code 1, no vfxAt, no castN advance; missing catalog state clears e.bl
+    QuaiChung.capNhat(makeSnap(undefined, {
+      bots: [{ ...bot, atkN: 3, cast: { kind: "buff", skillId: 0, skillLv: 10, n: 3, x: 640, y: 520, at: 50700 }, buff: { skillId: 159, skillLv: 5, at: 50000, until: 51000 } }],
+      gio: 50700,
+    }));
+    assert.equal(mocCalls.at(-1)[0][6], 1);
+    assert.equal(vfxCalls.length, 2);
+    assert.equal(e.castN, 2);
+    assert.equal(e.bl, null);
+
+    // Buff without k.pre still sends code 3, advances castN, and sets e.bl when state exists; expiry (ms >= until) clears e.bl
+    QuaiChung.capNhat(makeSnap(undefined, {
+      bots: [{ ...bot, atkN: 3, cast: { kind: "buff", skillId: 158, skillLv: 8, n: 3, x: 640, y: 520, at: 50800 }, buff }],
+      gio: 50800,
+    }));
+    assert.equal(mocCalls.at(-1)[0][6], 3);
+    assert.equal(vfxCalls.length, 2);
+    assert.equal(e.castN, 3);
+    assert.deepEqual(e.bl, [157]);
+
+    QuaiChung.capNhat(makeSnap(undefined, {
+      bots: [{ ...bot, act: "stand", atkN: 3, buff }],
+      gio: 51000,
+    }));
+    assert.equal(e.bl, null);
+
+    // Subsequent strike still uses code 1 and chieuAo
+    QuaiChung.capNhat(makeSnap(undefined, {
+      bots: [{ ...bot, atkN: 4, cast: { n: 4, x: 700, y: 560, at: 51200 }, buff: { skillId: 157, skillLv: 10, at: 52000, until: 55000 } }],
+      gio: 51200,
+    }));
+    assert.equal(mocCalls.at(-1)[0][6], 1);
+    assert.equal(chieuCalls.length, 1);
+    assert.equal(chieuCalls[0].id, 165);
+    assert.equal(vfxCalls.length, 2);
+    assert.equal(e.bl, null); // ms < buff.at
+
+    QuaiChung.ganWorld(null);
+  });
 });

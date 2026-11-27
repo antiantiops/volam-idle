@@ -453,4 +453,112 @@ describe("bot-luyen-cong", () => {
     assert.ok(Math.hypot(mob.x - st1.x, mob.y - st1.y) > 75);
     assert.ok(Math.hypot(mob.x - st1.x, mob.y - st1.y) <= 220);
   });
+
+  it("uses botOpts.castMs for cadence and attack animation window without stagger", () => {
+    const squad = taoDoiLuyenCong();
+    const nguoi = new Map([["p1", { x: 1000, y: 1000 }]]);
+    const quai = [
+      makeMob(1, 1020, 1000),
+      makeMob(11, 1180, 1000, { mau: 10000, mauMax: 10000 }),
+      makeMob(12, 1000, 1180, { mau: 10000, mauMax: 10000 }),
+      makeMob(13, 820, 1000, { mau: 10000, mauMax: 10000 }),
+    ];
+
+    squad.ghiDanh(0, "p1", 1);
+    squad.ghiDanh(1000, "p1", 1);
+    squad.tick(3100, nguoi, quai, openMap);
+
+    const opts = new Map([
+      ["1", { castMs: 650 }],
+      ["2", { castMs: 650 }],
+      ["3", { castMs: 650 }],
+    ]);
+    let bot2FirstAt = null;
+    for (let t = 3300; t <= 6000; t += 10) {
+      const strikes = squad.tick(t, nguoi, quai, openMap, opts);
+      if (strikes.some((s) => s.id === 2)) {
+        bot2FirstAt = t;
+        break;
+      }
+    }
+    assert.ok(bot2FirstAt !== null);
+
+    // At +450ms (default animation duration) bot 2 is still in attack animation, no second strike yet
+    assert.equal(squad.tick(bot2FirstAt + 450, nguoi, quai, openMap, opts).some((s) => s.id === 2), false);
+    assert.equal(squad.trangThai().find((b) => b.id === 2).act, "attack");
+
+    // At +649ms still before 650ms cadence: no early second hit, attack animation still active
+    assert.equal(squad.tick(bot2FirstAt + 649, nguoi, quai, openMap, opts).some((s) => s.id === 2), false);
+    assert.equal(squad.trangThai().find((b) => b.id === 2).act, "attack");
+
+    // Exactly at +650ms (earlier than default 1000ms + 90ms id stagger): second strike fires
+    const at650 = squad.tick(bot2FirstAt + 650, nguoi, quai, openMap, opts);
+    assert.equal(at650.some((s) => s.id === 2), true);
+  });
+
+  it("consumes one-shot botOpts.buff only on eligible ready target, locks cast window without extra cooldown, preserves protection and legacy null", () => {
+    const squad = taoDoiLuyenCong();
+    const nguoi = new Map([["p1", { x: 1000, y: 1000 }]]);
+    const humanMob = makeMob(1, 1020, 1000);
+    const boss = makeMob(10, 1200, 1000, { boss: 1 });
+    const mob = makeMob(11, 1300, 1000, { mau: 1000, mauMax: 1000 });
+    const buffOpt = { buff: { skillId: 15, skillLv: 10, castMs: 500 } };
+
+    squad.ghiDanh(0, "p1", 1);
+    squad.ghiDanh(1000, "p1", 1);
+    squad.tick(3100, nguoi, [humanMob], openMap);
+    const b1 = squad.trangThai()[0];
+    const opts = new Map([[b1.id, buffOpt]]);
+
+    // Ineligible targets (human-protected + boss) do not consume buff or strike
+    assert.deepEqual(squad.tick(3300, nguoi, [humanMob, boss], openMap, opts), []);
+
+    // Approaching mob out of range emits neither buff nor strike; emits buff once in range/LOS
+    let buffAt = null;
+    for (let t = 3500; t <= 8000; t += 100) {
+      const actions = squad.tick(t, nguoi, [humanMob, boss, mob], openMap, opts);
+      if (actions.length) {
+        assert.deepEqual(actions, [{ id: b1.id, buff: { skillId: 15, skillLv: 10 } }]);
+        buffAt = t;
+        break;
+      }
+    }
+    assert.ok(buffAt !== null);
+    const duringSt = squad.trangThai().find((b) => b.id === b1.id);
+    assert.equal(duringSt.act, "attack");
+    assert.equal(duringSt.atkN, 1);
+
+    // Caller clears option; even if target moves out of range during 500ms cast window, bot neither moves nor hits early
+    mob.x += 120;
+    assert.deepEqual(squad.tick(buffAt + 499, nguoi, [humanMob, boss, mob], openMap), []);
+    const midSt = squad.trangThai().find((b) => b.id === b1.id);
+    assert.equal(midSt.x, duringSt.x);
+    assert.equal(midSt.y, duringSt.y);
+    assert.equal(midSt.act, "attack");
+
+    // Return mob to range: at +500ms (< 1000ms default cooldown) next hit fires immediately with no extra wait
+    mob.x -= 120;
+    assert.deepEqual(squad.tick(buffAt + 500, nguoi, [humanMob, boss, mob], openMap), [{ id: b1.id, uid: 11 }]);
+
+    // Invalid buff spec is ignored and normal strike fires once cooldown elapses
+    assert.deepEqual(
+      squad.tick(buffAt + 1500, nguoi, [humanMob, boss, mob], openMap, new Map([[b1.id, { buff: { skillId: 15, skillLv: 10, castMs: 349 } }]])),
+      [{ id: b1.id, uid: 11 }]
+    );
+
+    // Legacy single-bot wrapper returns null (not undefined) for buff-only tick, then uid on strike
+    const single = taoBotLuyenCong();
+    single.ghiDanh(0, "p1", 1);
+    single.ghiDanh(1000, "p1", 1);
+    single.tick(3100, nguoi, [makeMob(1, 1020, 1000)], openMap);
+    let legacyBuffT = null;
+    for (let t = 3300; t <= 8000; t += 100) {
+      const prevN = single.trangThai().atkN;
+      const res = single.tick(t, nguoi, [makeMob(20, 1200, 1000)], openMap, { 1: buffOpt });
+      assert.strictEqual(res, null);
+      if (single.trangThai().atkN > prevN) { legacyBuffT = t; break; }
+    }
+    assert.ok(legacyBuffT !== null);
+    assert.strictEqual(single.tick(legacyBuffT + 500, nguoi, [makeMob(20, 1200, 1000)], openMap), 20);
+  });
 });

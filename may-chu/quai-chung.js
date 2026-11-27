@@ -33,12 +33,16 @@ const ND = require("./nghi-dame.js"); // nghi hack sát thương (anh 16/11 — 
 const SAT = () => require("./sat-thu.js"); // Boss Sát thủ chung (anh 03/11)
 
 const N = DO.NOI, CFG = N.CFG.quaiChung || {};
-const BOT_LO_MIN = 70, BOT_HI_MAX = 100, BOT_BAT = process.env.VL_BOT_LUYEN_CONG === "1", BOT_CAST_MS = 450;
+const BOT_LO_MIN = 70, BOT_HI_MAX = 100, BOT_BAT = process.env.VL_BOT_LUYEN_CONG === "1", BOT_CAST_MS = 450, BOT_BUFF_CAST_MS = 1000, BOT_BUFF_LEAD_MS = 1500, BOT_BUFF_TICK_MIN = 90, BOT_BUFF_TICK_MAX = 10800;
 // ponytail: curated 1-per-faction attack skills (skip traps/auras/passive/dash); widen to catalog scan + skill-style profiles when bot learns combos
 const BOT_SKILLS = [
   ["shaolin", 19], ["tianwang", 32], ["tangmen", 249], ["wudu", 71], ["emei", 88],
   ["cuiyan", 108], ["gaibang", 128], ["tianren", 148], ["wudang", 165], ["kunlun", 182],
 ];
+// ponytail: vetted 1-per-faction native self-buff IDs; widen to catalog buff scan when bots manage multi-buffs/auras
+const BOT_BUFFS = {
+  shaolin: 273, tianwang: 42, cuiyan: 109, gaibang: 130, tianren: 150, wudang: 157, kunlun: 173,
+};
 // ponytail: curated faction cosmetic outfits [sex, armor, helm, weapon], mantle 1, no horse; widen to random gear table when bot equips dynamic loot
 const BOT_OUTFITS = {
   shaolin: { sex: "m", look: { armor: 24, helm: 3, weapon: 23, mantle: 1 } },
@@ -157,15 +161,87 @@ function botTao() {
     return null;
   }
 }
-const botCastKhac = (a, b) => (!a && !b) ? false : (!a || !b) ? true : a.n !== b.n || a.x !== b.x || a.y !== b.y || a.at !== b.at;
+const botCastKhac = (a, b) => (!a && !b) ? false : (!a || !b) ? true : a.kind !== b.kind || a.skillId !== b.skillId || a.skillLv !== b.skillLv || a.n !== b.n || a.x !== b.x || a.y !== b.y || a.at !== b.at;
+const botBuffKhac = (a, b) => (!a && !b) ? false : (!a || !b) ? true : a.skillId !== b.skillId || a.skillLv !== b.skillLv || a.at !== b.at || a.until !== b.until;
 const botLookKhac = (a, b) => (!a && !b) ? false : (!a || !b) ? true : a.armor !== b.armor || a.helm !== b.helm || a.weapon !== b.weapon || a.mantle !== b.mantle;
 const botProfKhac = (a, b) => (!a && !b) ? false : (!a || !b) ? true : a.lvl !== b.lvl || a.fac !== b.fac || a.facName !== b.facName || a.skillId !== b.skillId || a.skillLv !== b.skillLv || a.sex !== b.sex || botLookKhac(a.look, b.look);
-const botItemKhac = (cu, moi) => (!cu && !moi) ? false : (!cu || !moi) ? true : cu.id !== moi.id || cu.x !== moi.x || cu.y !== moi.y || cu.dir !== moi.dir || cu.act !== moi.act || cu.atkN !== moi.atkN || botProfKhac(cu, moi) || botCastKhac(cu.cast, moi.cast);
+const botItemKhac = (cu, moi) => (!cu && !moi) ? false : (!cu || !moi) ? true : cu.id !== moi.id || cu.x !== moi.x || cu.y !== moi.y || cu.dir !== moi.dir || cu.act !== moi.act || cu.atkN !== moi.atkN || botProfKhac(cu, moi) || botCastKhac(cu.cast, moi.cast) || botBuffKhac(cu.buff, moi.buff);
 function botKhac(cu, moi) {
   const a = Array.isArray(cu) ? cu : [], b = Array.isArray(moi) ? moi : [];
   if (a.length !== b.length) return true;
   for (let i = 0; i < a.length; i++) if (botItemKhac(a[i], b[i])) return true;
   return false;
+}
+// Khung xuất chiêu gốc 18 khung (src/game/rules.js atkFrames & src/game/vocong.js castStart, CAST_T = 18); làm tròn lên integer ms để tránh đánh sớm hơn client
+function botCastMs(spd = 0) {
+  const s = Number.isFinite(spd) ? spd : 0;
+  const frames = Math.max(1, Math.floor((18 * 100) / (100 + Math.max(-90, s))));
+  return Math.ceil((frames * 1000) / 18);
+}
+function botBuffSpec(prev, cat) {
+  if (!prev || !prev.fac || !cat || !Array.isArray(cat.factions) || !cat.skills || !cat.vcSk) return null;
+  const buffId = BOT_BUFFS[prev.fac];
+  if (!buffId) return null;
+  const lvl = Number(prev.lvl);
+  if (!Number.isFinite(lvl) || lvl < 1) return null;
+  const f = cat.factions.find((x) => x && x.key === prev.fac);
+  if (!f || !Array.isArray(f.skills) || !f.skills.includes(buffId)) return null;
+  const sk = cat.skills[buffId], vc = cat.vcSk[buffId];
+  const st = vc && vc.state;
+  const hasState = typeof st === "number" ? st > 0 : typeof st === "string" && st.trim() !== "" && (!Number.isFinite(+st) || +st > 0);
+  if (!sk || !hasState) return null;
+  const req = Math.max(1, Number(sk.req) || 1);
+  if (req > lvl) return null;
+  if (!sk.target || !sk.target.self || sk.target.enemy) return null;
+  if (sk.eqt !== -2 || sk.aura) return null;
+  const maxLv = Math.max(1, Number(sk.max) || 20);
+  const skillLv = Math.max(1, Math.min(maxLv, lvl - req + 1));
+  if (!sk.lv || typeof sk.lv !== "object") return null;
+  let maxTicks = 0;
+  for (const [k, a] of Object.entries(sk.lv)) {
+    if (k.startsWith("skill_") || !Array.isArray(a) || !a.length) continue;
+    const row = a[Math.min(a.length, skillLv) - 1];
+    const p2 = Array.isArray(row) ? row[1] : NaN;
+    if (typeof p2 === "number" && Number.isFinite(p2) && p2 > maxTicks) maxTicks = p2;
+  }
+  if (maxTicks < BOT_BUFF_TICK_MIN || maxTicks > BOT_BUFF_TICK_MAX) return null;
+  return { skillId: buffId, skillLv, durMs: Math.round((maxTicks * 1000) / 18) };
+}
+function botBuildOpts(prevById, cat, t) {
+  if (!prevById || !prevById.size || !cat || !cat.skills) return undefined;
+  const opts = new Map();
+  for (const [id, prev] of prevById) {
+    const opt = {};
+    const b = botBuffSpec(prev, cat);
+    const cur = prev && prev.buff;
+    const s = prev && prev.skillId != null ? cat.skills[prev.skillId] : null;
+    if (s && s.phys !== undefined) {
+      let spd = 0;
+      if (b && cur && cur.skillId === b.skillId && cur.skillLv === b.skillLv && Number.isFinite(t) && Number.isFinite(cur.at) && Number.isFinite(cur.until) && t >= cur.at && t < cur.until) {
+        const bLv = cat.skills[b.skillId] && cat.skills[b.skillId].lv;
+        if (bLv && typeof bLv === "object") {
+          for (const k of s.phys ? ["attackspeed_v", "attackspeed_yan_v"] : ["castspeed_v", "castspeed_yan_v"]) {
+            const a = Object.hasOwn(bLv, k) ? bLv[k] : null;
+            if (!Array.isArray(a) || !a.length) continue;
+            const row = a[Math.min(a.length, b.skillLv) - 1];
+            const amt = Array.isArray(row) ? row[0] : NaN, ticks = Array.isArray(row) ? row[1] : NaN;
+            if (typeof amt === "number" && Number.isFinite(amt) && amt > 0 && typeof ticks === "number" && Number.isFinite(ticks) && ticks > 0) {
+              if (t < Math.min(cur.until, cur.at + Math.round((ticks * 1000) / 18))) spd += amt;
+            }
+          }
+        }
+      }
+      opt.castMs = botCastMs(spd);
+    }
+    if (b) {
+      const active = cur && cur.skillId === b.skillId && cur.skillLv === b.skillLv && Number.isFinite(cur.until);
+      if (!active || (Number.isFinite(t) && cur.until - t <= BOT_BUFF_LEAD_MS)) {
+        opt.buff = { skillId: b.skillId, skillLv: b.skillLv, castMs: BOT_BUFF_CAST_MS };
+      }
+    }
+    if (opt.castMs !== undefined || opt.buff !== undefined) opts.set(id, opt);
+  }
+  return opts.size ? opts : undefined;
 }
 function botBuoc(P, M, t, opts) {
   if (!P || (!opts && !botDuoc(P.bai)) || !P.botCtl) return;
@@ -194,21 +270,26 @@ function botBuoc(P, M, t, opts) {
   for (const b of Array.isArray(P.botsSt) ? P.botsSt : []) {
     if (b && b.id != null) prevById.set(b.id, b);
   }
-  const strikesRaw = P.botCtl.tick(t, nguoi, quai, map);
+  const cat = prevById.size ? loadCat() : null;
+  const botOpts = botBuildOpts(prevById, cat, t);
+  const strikesRaw = P.botCtl.tick(t, nguoi, quai, map, botOpts);
   const rawList = P.botCtl.trangThai();
   if (!Array.isArray(rawList) || rawList.length === 0) {
     if (P.botsSt && P.botsSt.length) { P.botsSt = []; P.doi = true; }
     return;
   }
-  const cat = loadCat();
+  const catRoll = cat || loadCat();
   const usedFacs = new Set();
   for (const raw of rawList) {
     const prev = prevById.get(raw.id);
     if (prev && prev.fac) usedFacs.add(prev.fac);
   }
   const strikeById = new Map();
+  const buffById = new Map();
   for (const s of Array.isArray(strikesRaw) ? strikesRaw : []) {
-    if (s && s.id != null && s.uid != null && !strikeById.has(s.id)) strikeById.set(s.id, s.uid);
+    if (!s || s.id == null) continue;
+    if (s.uid != null && !strikeById.has(s.id)) strikeById.set(s.id, s.uid);
+    else if (s.uid == null && s.buff && !buffById.has(s.id)) buffById.set(s.id, s.buff);
   }
   const hitUids = new Set();
   const killMobs = [];
@@ -219,10 +300,21 @@ function botBuoc(P, M, t, opts) {
     if (prev && prev.lvl != null) {
       prof = { lvl: prev.lvl, ...(prev.fac ? { fac: prev.fac, facName: prev.facName, skillId: prev.skillId, skillLv: prev.skillLv } : {}), sex: prev.sex, look: { ...prev.look } };
     } else {
-      prof = botRollProfile(z, cat, rng, BOT_SKILLS, usedFacs);
+      prof = botRollProfile(z, catRoll, rng, BOT_SKILLS, usedFacs);
       if (prof.fac) usedFacs.add(prof.fac);
     }
-    let cast = prev && prev.cast && t - prev.cast.at < BOT_CAST_MS ? prev.cast : null;
+    const castWindow = prev && prev.cast && prev.cast.kind === "buff" ? BOT_BUFF_CAST_MS : BOT_CAST_MS;
+    let cast = prev && prev.cast && t - prev.cast.at < castWindow ? prev.cast : null;
+    let buff = prev && prev.buff && prev.buff.until > t ? prev.buff : null;
+    const evBuff = buffById.get(raw.id);
+    const reqBuff = botOpts && botOpts.get(raw.id) && botOpts.get(raw.id).buff;
+    if (evBuff && reqBuff && evBuff.skillId === reqBuff.skillId && evBuff.skillLv === reqBuff.skillLv) {
+      const bSpec = botBuffSpec(prev, cat);
+      if (bSpec && bSpec.skillId === evBuff.skillId && bSpec.skillLv === evBuff.skillLv) {
+        buff = { skillId: bSpec.skillId, skillLv: bSpec.skillLv, at: t, until: t + bSpec.durMs };
+        cast = { kind: "buff", skillId: bSpec.skillId, skillLv: bSpec.skillLv, n: raw.atkN, x: Math.round(raw.x), y: Math.round(raw.y), at: t };
+      }
+    }
     const hitUid = strikeById.get(raw.id);
     if (hitUid != null && !hitUids.has(hitUid)) {
       hitUids.add(hitUid);
@@ -237,7 +329,7 @@ function botBuoc(P, M, t, opts) {
         if (m.mau <= 0) killMobs.push(m);
       }
     }
-    nextList.push({ ...raw, ...prof, ...(cast ? { cast } : {}) });
+    nextList.push({ ...raw, ...prof, ...(cast ? { cast } : {}), ...(buff ? { buff } : {}) });
   }
   if (botKhac(P.botsSt, nextList)) { P.botsSt = nextList; P.doi = true; }
   if (killMobs.length) {
@@ -505,4 +597,4 @@ function nhanThuong(h, tk, key, admin) {
   return out.kn || out.nhan.length || out.roi.length || out.tin.length ? out : null;
 }
 
-module.exports = { bat, danh, nhanThuong, nvSat, BAI, _bot: { BOT_LO_MIN, BOT_SKILLS, BOT_OUTFITS, BOT_OUTFIT_DEFAULT, botDuoc, botMap, botCatalogs, botPickLevel, botRollProfile, botBuoc, botKhac } };
+module.exports = { bat, danh, nhanThuong, nvSat, BAI, _bot: { BOT_LO_MIN, BOT_SKILLS, BOT_BUFFS, BOT_OUTFITS, BOT_OUTFIT_DEFAULT, botDuoc, botMap, botCatalogs, botPickLevel, botRollProfile, botCastMs, botBuffSpec, botBuildOpts, botBuoc, botKhac } };
