@@ -2511,16 +2511,14 @@ async function thangSuKienDlg(id) {
     if (!kinds.length) return { desc: 1, text: LE_QUAN + "Hiện chưa có sự kiện tháng nào đang mở.", opts: [["Thoát", null]] };
     const ten = { noel: "Giáng Sinh (Noel)", tet: "Tết (Bánh Chưng)" };
     const cheOpts = (k) => (k === "noel"
-      ? (noel.ver5 === true
-        ? [["Ghép Người tuyết (thường)", "ThangSuKien:che:noelV5Thuong"], ["Ghép Người tuyết khăn xanh (thường)", "ThangSuKien:che:noelV5Xanh"], ["Ghép Người tuyết khăn đỏ (thường)", "ThangSuKien:che:noelV5Do"], ["Ghép Người tuyết đặc biệt (10.000 lượng)", "ThangSuKien:che:noelV5ThuongDB"], ["Ghép Người tuyết khăn xanh đặc biệt (20.000 lượng)", "ThangSuKien:che:noelV5XanhDB"], ["Ghép Người tuyết khăn đỏ đặc biệt (20.000 lượng)", "ThangSuKien:che:noelV5DoDB"]]
-        : [["Ghép Người tuyết", "ThangSuKien:che:noelThuong"], ["Ghép Người tuyết khăn xanh", "ThangSuKien:che:noelXanh"], ["Ghép Người tuyết khăn đỏ", "ThangSuKien:che:noelDo"]])
+      ? [["Ghép Người tuyết (thường)", "ThangSuKien:che:noelV5Thuong"], ["Ghép Người tuyết khăn xanh (thường)", "ThangSuKien:che:noelV5Xanh"], ["Ghép Người tuyết khăn đỏ (thường)", "ThangSuKien:che:noelV5Do"], ["Ghép Người tuyết đặc biệt (10.000 lượng)", "ThangSuKien:che:noelV5ThuongDB"], ["Ghép Người tuyết khăn xanh đặc biệt (20.000 lượng)", "ThangSuKien:che:noelV5XanhDB"], ["Ghép Người tuyết khăn đỏ đặc biệt (20.000 lượng)", "ThangSuKien:che:noelV5DoDB"]]
       : [["Gói Bánh chưng thường (20.000 lượng)", "ThangSuKien:che:tetThuong"], ["Gói Bánh chưng hảo hạng", "ThangSuKien:che:tetHao"], ["Gói Bánh chưng thượng hạng", "ThangSuKien:che:tetThuongHang"], ["Mua Bí quyết hảo hạng (100.000 lượng)", "ThangSuKien:che:tetMuaBiQuyetHao"], ["Mua Bí quyết thượng hạng (200.000 lượng)", "ThangSuKien:che:tetMuaBiQuyetThuong"]]);
     const mocOpts = (k, st) => [[1, 1000], [2, 1500], [3, 2000]]
       .filter(([m, ng]) => (st.specialUsed | 0) >= ng && !(st.claimed && st.claimed[m]))
       .map(([m, ng]) => [`Nhận thưởng mốc ${ng}`, `ThangSuKien:moc:${k}:${m}`]);
     const tomTat = (k) => {
       const st = sk[k] || {}, da = [1, 2, 3].filter((m) => st.claimed && st.claimed[m]).map((m) => [1000, 1500, 2000][m - 1]);
-      const nhan = k === "noel" && noel.ver5 === true ? "đã dùng khăn đỏ đặc biệt" : "đã dùng đặc biệt";
+      const nhan = k === "noel" ? "đã dùng khăn đỏ đặc biệt" : "đã dùng đặc biệt";
       return `<enter><color=yellow>${ten[k]}<color>: ${nhan} <color=yellow>${st.specialUsed | 0}<color>${da.length ? ` (đã nhận mốc ${da.join(", ")})` : ""}`;
     };
     const tin = j.msg ? `<enter><color=green>${j.msg}<color>` : "";

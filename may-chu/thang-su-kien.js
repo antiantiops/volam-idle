@@ -32,47 +32,8 @@ const TET_BOX = [
 ];
 
 const RECIPES = {
-  noelThuong: {
-    kind: "noel",
-    ver: 4,
-    in: [
-      ["noelHoaTuyet", 5],
-      ["noelCanhThong", 2],
-      ["noelCaRot", 1],
-      ["noelNon", 1],
-    ],
-    gold: 0,
-    out: "noelNguoiTuyet",
-  },
-  noelXanh: {
-    kind: "noel",
-    ver: 4,
-    in: [
-      ["noelHoaTuyet", 5],
-      ["noelCanhThong", 2],
-      ["noelCaRot", 1],
-      ["noelNon", 1],
-      ["noelKhanXanh", 1],
-    ],
-    gold: 0,
-    out: "noelNguoiTuyetXanh",
-  },
-  noelDo: {
-    kind: "noel",
-    ver: 4,
-    in: [
-      ["noelHoaTuyet", 5],
-      ["noelCanhThong", 2],
-      ["noelCaRot", 1],
-      ["noelNon", 1],
-      ["noelKhanDo", 1],
-    ],
-    gold: 0,
-    out: "noelNguoiTuyetDo",
-  },
   noelV5Thuong: {
     kind: "noel",
-    ver: 5,
     in: [
       ["noelHoaTuyet", 5],
       ["noelCanhThong", 2],
@@ -84,7 +45,6 @@ const RECIPES = {
   },
   noelV5Xanh: {
     kind: "noel",
-    ver: 5,
     in: [
       ["noelHoaTuyet", 5],
       ["noelCanhThong", 2],
@@ -97,7 +57,6 @@ const RECIPES = {
   },
   noelV5Do: {
     kind: "noel",
-    ver: 5,
     in: [
       ["noelHoaTuyet", 5],
       ["noelCanhThong", 2],
@@ -110,7 +69,6 @@ const RECIPES = {
   },
   noelV5ThuongDB: {
     kind: "noel",
-    ver: 5,
     in: [
       ["noelHoaTuyet", 5],
       ["noelCanhThong", 2],
@@ -123,7 +81,6 @@ const RECIPES = {
   },
   noelV5XanhDB: {
     kind: "noel",
-    ver: 5,
     in: [
       ["noelHoaTuyet", 5],
       ["noelCanhThong", 2],
@@ -137,7 +94,6 @@ const RECIPES = {
   },
   noelV5DoDB: {
     kind: "noel",
-    ver: 5,
     in: [
       ["noelHoaTuyet", 5],
       ["noelCanhThong", 2],
@@ -199,18 +155,6 @@ const RECIPES = {
 };
 
 const ITEM_USE = {
-  noelNguoiTuyet: {
-    kind: "noel",
-    tier: "normal",
-    exp: 1000000,
-    pool: [
-      { k: "ms:147:2", n: 1, w: 30 },
-      { k: "noelMatNaOngGia", n: 1, w: 30 },
-      { k: "noelMatNaThienSu", n: 1, w: 30 },
-      { k: "noelMatNaTuanLoc", n: 1, w: 30 },
-      { k: "noelMatNaTinhLinh", n: 1, w: 30 },
-    ],
-  },
   tetBanhThuong: {
     kind: "tet",
     tier: "normal",
@@ -220,22 +164,6 @@ const ITEM_USE = {
       { k: "tetMatNaDauOngDia", n: 1, w: 30 },
       { k: "tetMatNaNamSu", n: 1, w: 30 },
       { k: "tetMatNaBacSi", n: 1, w: 30 },
-    ],
-  },
-  noelNguoiTuyetXanh: {
-    kind: "noel",
-    tier: "hao",
-    exp: 3000000,
-    pool: [
-      { k: "ms:71", n: 1, w: 3 },
-      { k: "ms:124", n: 1, w: 2 },
-      { k: "ms:123", n: 1, w: 5 },
-      { k: "ms:122", n: 1, w: 10 },
-      { k: "ms:147:3", n: 1, w: 30 },
-      { k: "noelMatNaOngGia", n: 1, w: 30 },
-      { k: "noelMatNaThienSu", n: 1, w: 30 },
-      { k: "noelMatNaTuanLoc", n: 1, w: 30 },
-      { k: "noelMatNaTinhLinh", n: 1, w: 30 },
     ],
   },
   tetBanhHao: {
@@ -251,29 +179,6 @@ const ITEM_USE = {
       { k: "tetMatNaDauOngDia", n: 1, w: 30 },
       { k: "tetMatNaNamSu", n: 1, w: 30 },
       { k: "tetMatNaBacSi", n: 1, w: 30 },
-    ],
-  },
-  noelNguoiTuyetDo: {
-    kind: "noel",
-    tier: "special",
-    special: true,
-    exp: 5000000,
-    pool: [
-      { k: "ms:71", n: 1, w: 3 },
-      { k: "ms:124", n: 1, w: 2 },
-      { k: "ms:123", n: 1, w: 5 },
-      { k: "ms:122", n: 1, w: 10 },
-      { k: "ms:147:4", n: 1, w: 30 },
-      { k: "ms:1181", n: 1, w: 0.5 },
-      { k: "qk:489", n: 1, w: 0.1 },
-      { k: "qk:353", n: 1, w: 0.005 },
-      { k: "qk:238", n: 1, w: 0.005 },
-      { k: "qk:239", n: 1, w: 0.005 },
-      { k: "qk:240", n: 1, w: 0.005 },
-      { k: "noelMatNaOngGia", n: 1, w: 30 },
-      { k: "noelMatNaThienSu", n: 1, w: 30 },
-      { k: "noelMatNaTuanLocDacBiet", n: 1, w: 30 },
-      { k: "noelMatNaTinhLinh", n: 1, w: 30 },
     ],
   },
   tetBanhThuongHang: {
@@ -442,28 +347,12 @@ function activeMonth(now) {
 // Trạng thái hoạt động event: trả về boolean hoặc chi tiết nếu caller cần
 function dang(kind, now) {
   const C = cf();
-  const noelV5 = !!(C.noelVer5 && C.noelVer5.bat === true);
-  if (!C.bat && !noelV5) return false;
   const ts = normalizeNow(now);
   if (!Number.isFinite(ts)) return false;
-  if (noelV5) {
-    const realDec = vnParts(ts).month === 12;
-    if (kind != null) {
-      if (kind === "noel") return realDec;
-      if (kind === "tet") return !!C.bat && activeMonth(ts) === KIND_MONTH.tet;
-      return false;
-    }
-    if (realDec) return "noel";
-    if (C.bat && activeMonth(ts) === KIND_MONTH.tet) return "tet";
-    return false;
-  }
-  const m = activeMonth(ts);
-  if (kind != null) {
-    return typeof kind === "string" && own(KIND_MONTH, kind) && KIND_MONTH[kind] === m;
-  }
-  if (m === 12) return "noel";
-  if (m === 1) return "tet";
-  return false;
+  const noel = C.noelVer5.bat && vnParts(ts).month === KIND_MONTH.noel;
+  const tet = C.bat && activeMonth(ts) === KIND_MONTH.tet;
+  if (kind != null) return kind === "noel" ? noel : kind === "tet" && tet;
+  return noel ? "noel" : tet ? "tet" : false;
 }
 
 function getLevel(h) {
@@ -664,9 +553,9 @@ function normalizeYearEntry(entry, kind) {
       : null;
   if (rawUsedByItem) {
     const usedByItem = {};
-    for (const k of Object.keys(ITEM_USE)) {
-      const spec = ITEM_USE[k];
-      if (spec.special || (kind && spec.kind !== kind)) continue;
+    // Giữ số lượt Noel cũ trong save, không dùng để phát thưởng.
+    const keys = kind === "noel" ? ["noelNguoiTuyet", "noelNguoiTuyetXanh"] : Object.keys(ITEM_USE).filter((k) => !ITEM_USE[k].special);
+    for (const k of keys) {
       if (!own(rawUsedByItem, k)) continue;
       const raw = rawUsedByItem[k];
       if (raw == null || typeof raw === "boolean" || (typeof raw === "string" && raw.trim() === "")) continue;
@@ -746,12 +635,6 @@ function che(h, recipeId, now) {
     return { ok: false, msg: "Công thức không tồn tại" };
   }
   const rec = RECIPES[recipeId];
-  if (rec.kind === "noel") {
-    const noelV5 = !!(cf().noelVer5 && cf().noelVer5.bat === true);
-    if ((noelV5 && rec.ver !== 5) || (!noelV5 && rec.ver !== 4)) {
-      return { ok: false, msg: "Công thức không tồn tại" };
-    }
-  }
   const auth = checkHero(h, rec.kind, now);
   if (!auth.ok) return auth;
 
@@ -987,8 +870,7 @@ function moc(h, kind, tier, now, randomFn) {
   if (typeof kind !== "string" || !own(KIND_MONTH, kind)) {
     return { ok: false, msg: "Sự kiện không hợp lệ" };
   }
-  const noelV5 = kind === "noel" && !!(cf().noelVer5 && cf().noelVer5.bat === true);
-  const table = noelV5 ? MOC_NOEL_V5 : MILESTONES;
+  const table = kind === "noel" ? MOC_NOEL_V5 : MILESTONES;
   const tierValid =
     (typeof tier === "number" && Number.isInteger(tier)) ||
     (typeof tier === "string" && /^\d+$/.test(tier));
@@ -1002,7 +884,7 @@ function moc(h, kind, tier, now, randomFn) {
 
   const yearKey = String(vnParts(now).year);
   const st = readKindYearState(h, kind, yearKey);
-  if (noelV5) {
+  if (kind === "noel") {
     const v5Claimed = st.ver5 && st.ver5.claimed ? st.ver5.claimed : null;
     if (v5Claimed && own(v5Claimed, tierKey) && v5Claimed[tierKey] === true) {
       return { ok: false, msg: "Đã nhận mốc thưởng này" };
@@ -1099,8 +981,7 @@ function drop(h, zone, now, randomFn) {
   }
   const ts = normalizeNow(now);
   if (!Number.isFinite(ts)) return null;
-  const activeKind = dang(null, ts);
-  if (!activeKind) return null;
+  if (!dang("tet", ts)) return null;
   const lvl = getLevel(h);
   const gold = getGold(h);
   if (!Number.isFinite(lvl) || lvl < 50 || !Number.isFinite(gold)) return null;
@@ -1108,12 +989,11 @@ function drop(h, zone, now, randomFn) {
   const r = typeof randomFn === "function" ? Number(randomFn()) : Math.random();
   if (!Number.isFinite(r) || !(r >= 0 && r < rate)) return null;
 
-  const boxKey = BOX_ITEMS[activeKind];
   return {
     ok: true,
-    kind: activeKind,
+    kind: "tet",
     zone: zone ?? null,
-    award: [{ k: boxKey, n: 1 }],
+    award: [{ k: BOX_ITEMS.tet, n: 1 }],
   };
 }
 
@@ -1126,18 +1006,12 @@ function tomTat(h, now) {
   const tetSt = readKindYearState(h, "tet", vn.year);
   const rawRate = C.drop ? Number(C.drop.tiLe) : 0;
   const safeRate = Number.isFinite(rawRate) && rawRate >= 0 && rawRate <= 1 ? rawRate : 0;
-  const noel = C.noelVer5?.bat === true
-    ? {
-        active: dang("noel", validTs),
-        ver5: true,
-        specialUsed: noelSt.ver5?.used?.noelV5NguoiTuyetDoDB ?? 0,
-        claimed: { ...(noelSt.ver5?.claimed ?? {}) },
-      }
-    : {
-        active: dang("noel", validTs),
-        specialUsed: noelSt.specialUsed,
-        claimed: { ...noelSt.claimed },
-      };
+  const noel = {
+    active: dang("noel", validTs),
+    ver5: C.noelVer5.bat,
+    specialUsed: noelSt.ver5?.used?.noelV5NguoiTuyetDoDB ?? 0,
+    claimed: { ...(noelSt.ver5?.claimed ?? {}) },
+  };
   return {
     bat: !!C.bat,
     month: activeMonth(validTs),
