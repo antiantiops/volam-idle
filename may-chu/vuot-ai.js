@@ -52,6 +52,38 @@ function bdMon(nguon, x) {
   catch (e) { if (!e || e.code !== "MODULE_NOT_FOUND") console.error("Báo Đáp Ân Sư —", nguon, e && e.message); return []; }
 }
 const BD_LOI = "Hoạt động báo đáp ân sư — thưởng Vượt Ải (hành trang đầy lúc nhận)";
+const NOEL_LOI = "Sự kiện Giáng Sinh — thưởng Vượt Ải (hành trang đầy lúc nhận)";
+const GV = () => require("./gio-vn");
+const TSK = () => require("./thang-su-kien");
+function noelSoDot(dot) { return dot === 17 ? 10 : dot === 28 ? 20 : 0; }
+function noelHet(t) {
+  const vn = GV().VN, tVn = new Date(t + vn);
+  return Date.UTC(tVn.getUTCFullYear(), tVn.getUTCMonth() + 1, 1) - vn;
+}
+function noelQua(so, t) {
+  return { mon: [{ k: "noelHop", n: so, het: noelHet(t) }], kbh: 0 };
+}
+function xoaCho(tk, ten, luc = Date.now()) {
+  const L = CHO.get(tk), giu = [];
+  for (const r of L || []) {
+    const rn = r && r.noel;
+    if (rn && rn.ten && rn.ten !== ten && Number.isFinite(rn.luc) && luc < noelHet(rn.luc)) giu.push({ phong: r.phong, noel: { ...rn } });
+  }
+  if (giu.length) CHO.set(tk, giu);
+  else CHO.delete(tk);
+}
+function noelMo(t) { return TSK().cf().noelVer5?.bat === true && TSK().dang("noel", t); }
+function noelGiao(h, rNoel, kq) {
+  const q = noelQua(rNoel.n, rNoel.luc);
+  let cho = false;
+  try {
+    const ds = DO.taoQua(h, { ...q, mon: q.mon.map((x) => ({ ...x })) });
+    if (kq && q.mon[0].het > Date.now() && ds.length) kq.tui = 1;
+  }
+  catch { h.quaCho = [...(Array.isArray(h.quaCho) ? h.quaCho : []), { ...q, luc: rNoel.luc, he: 1, loi: NOEL_LOI }]; cho = true; }
+  const ten = String(DO.tenMon({ k: "noelHop" })).trim();
+  return `Sự kiện Giáng Sinh (Vượt Ải đám ${rNoel.dot}): ${cho ? `hành trang không đủ chỗ — ${rNoel.n} ${ten} đang chờ, dọn túi là tự nhận.` : `nhận ${rNoel.n} ${ten}.`}`;
+}
 // trao món sự kiện vào túi (DO.taoQua — cả gói hoặc không, không khóa); túi đầy -> hàng chờ quà h.quaCho (nhịp api.js tự nhận khi có chỗ). -> câu báo
 function bdGiao(h, mon) {
   try { const ds = DO.taoQua(h, { mon: mon.map((x) => ({ ...x })) }); return `Hoạt động báo đáp ân sư: nhận được ${ds.join(", ")}.`; }
@@ -222,10 +254,13 @@ function quaiChetP(P, m) {
 // hết đám: mỗi người còn trong ải nhận kinh nghiệm của đám (× đội trưởng × cao cấp); sang đám sau sau nghi giây; hết 28 đám: kinh nghiệm theo phút
 function xongDotP(P) {
   const B = capCua(P.cap), d = B.dot[P.dot - 1], tong = B.dot.length, nVao = P.tv.length, T = thuongAi(P.cap, P.dot, tong, nVao);
+  const t = Date.now(), noelSo = !P.thu && N.BY.has("noelHop") ? noelSoDot(P.dot) : 0;
+  const noel = noelSo > 0 && noelMo(t) ? { n: noelSo, dot: P.dot, luc: t } : null;
   // anh 17/11: ải nhỏ (đám 1 … tong − 1) thưởng thêm ngay ở đây; ải cuối cộng vào phần thưởng hoàn thành bên dưới
   for (const tk of P.trong) {
     const ld = P.tv[0].tk === tk, them = P.dot < tong && T > 0 ? Math.round(T * (ld ? CF.doiTruong : 1)) : 0;
-    choThuong(tk, { kn: Math.round(d.kn * heSoTv(P, tk)) + them, tin: [`Đội ngũ đã tiêu diệt toàn bộ ${P.dot} đám quái!`], ...(them ? { tinVa: [cauThuong(P.dot, tong, them, nVao, ld)] } : {}) });
+    const ten = tenTv(P, tk);
+    choThuong(tk, { kn: Math.round(d.kn * heSoTv(P, tk)) + them, tin: [`Đội ngũ đã tiêu diệt toàn bộ ${P.dot} đám quái!`], ...(them ? { tinVa: [cauThuong(P.dot, tong, them, nVao, ld)] } : {}), ...(noel && P.dot < tong && ten ? { phong: P.id, noel: { ...noel, ten } } : {}) });
   }
   for (const tk of P.trong) { const ten = tenTv(P, tk); if (ten) try { BHO().cong(tk, null, ten, "vuotAi", null, { dot: P.dot }); } catch {} } // bang hội đợt 2: cống hiến mỗi đám (4 / 8 / 10)
   P.doi = true;
@@ -238,7 +273,8 @@ function xongDotP(P) {
   const xu = CF.xuSo | 0, trungXu = xu > 0 && Math.random() < Math.max(0, (+CF.xuDoi || 0) * (P.tv.length - 1));
   for (const tk of P.trong) {
     const ld = P.tv[0].tk === tk, cuoi = T > 0 ? Math.round(T * (ld ? CF.doiTruong : 1)) : 0; // anh 17/11: qua ải cuối thưởng thêm (10 triệu × hệ số)
-    choThuong(tk, { kn: Math.round(e * heSoTv(P, tk)) + cuoi, ket: P.ket, phong: P.id, rx: CF.ruongXanh | 0, ...(cuoi ? { tinVa: [cauThuong(P.dot, tong, cuoi, nVao, ld)] } : {}), ...(ev.length ? { ev: ev.map((x) => ({ ...x })) } : {}), ...(trungXu ? { xu } : {}) });
+    const ten = tenTv(P, tk);
+    choThuong(tk, { kn: Math.round(e * heSoTv(P, tk)) + cuoi, ket: P.ket, phong: P.id, rx: CF.ruongXanh | 0, ...(cuoi ? { tinVa: [cauThuong(P.dot, tong, cuoi, nVao, ld)] } : {}), ...(ev.length ? { ev: ev.map((x) => ({ ...x })) } : {}), ...(trungXu ? { xu } : {}), ...(noel && ten ? { noel: { ...noel, ten } } : {}) });
   }
   // báo cả máy chủ (kênh hệ thống — trình duyệt hiện ở thẻ Khác / Tất cả): anh 17/11 "ải cuối hiện kênh khác, cả server thấy thì ok" — kèm số kinh nghiệm thưởng thêm
   TG().thongBao(`${MT.ten(P.truong.ten)}: đội ngũ đã thắng lợi hoàn thành nhiệm vụ Thách thức thời gian ${tenBac(P.cap)}, đã dùng ${phut} phút ${giay % 60} giây!${T > 0 ? ` Mỗi người nhận thêm ${MT.thuong(soVn(T) + " kinh nghiệm")}!` : ""}${trungXu ? ` Cả đội may mắn nhận được ${MT.thuong(xu + " Xu")} mỗi người!` : ""}`);
@@ -334,6 +370,7 @@ function vaoDoi(h, tk, T) {
   for (const x of ds) {
     tieuGian(x.hA, x.gs, x.f.gian);
     x.hA.gold -= x.f.tien; x.S.luot++;
+    const dangCu = x.S.dang;
     x.S.dang = { cap: B.cap, bd, dot: 1, giet: [], luc: t, phong: P.id, tk: x.a };
     PHONG_TK.set(x.a, P.id);
     // soát lượt 89 (04/11): Bảo rương đồ xanh thưởng xong ải lượt trước còn chờ trong CHO (nhịp của người đó chưa tới) -> chuyển vào h.rxCho trước khi
@@ -345,7 +382,11 @@ function vaoDoi(h, tk, T) {
     if (evCu.length) x.hA.quaCho = [...(Array.isArray(x.hA.quaCho) ? x.hA.quaCho : []), { mon: evCu.slice(0, 20).map((m) => ({ ...m })), luc: t, he: 1, loi: BD_LOI }];
     const xuCu = (CHO.get(x.a) || []).reduce((s, r) => s + (r.xu | 0), 0); // anh 16/11: Xu may mắn xong ải lượt trước còn chờ — cộng thẳng, không mất
     if (xuCu > 0) { x.hA.xu = (x.hA.xu | 0) + xuCu; try { require("./nhat-ky.js").ghi("hiem", x.a, x.hA.name, `Vượt Ải tổ đội: + ${xuCu} Xu (may mắn cả đội — lượt trước)`); } catch {} }
-    CHO.delete(x.a);
+    for (const r of CHO.get(x.a) || []) {
+      const rn = r && r.noel;
+      if (rn && rn.ten === x.hA.name && (x.hA.lvl || 1) >= 50 && dangCu && dangCu.phong === r.phong && !dangCu.thu) noelGiao(x.hA, rn);
+    }
+    xoaCho(x.a, x.hA.name, t);
     if (x.a === tk.ten) continue; // đội trưởng: api.js ghi tài khoản + trả lệnh đi
     DO.chuan(x.hA); DL.ghiTk(x.tkA);
     DI.set(x.a, { tin: [`Đội trưởng ${h.name} đã báo danh Thách thức thời gian ${tenBac(B.cap)} — cả đội vào ải.`, `Đã nộp ${x.f.gian} Sát Thủ Giản + ${van(x.f.tien)} (lần ${x.S.luot}/${CF.luot} hôm nay).`, `Còn ${CF.chuanBi} giây nữa quái sẽ xuất hiện, hãy chuẩn bị!`], di: { z: B.bai, at: VA.vao } });
@@ -363,6 +404,16 @@ function ra(h, chet) {
   else if (!D.ket && conGiay(D) > 0) return { talk: ["Nhiệm vụ chưa kết thúc — hạ hết 28 đám quái hoặc chờ hết giờ."] };
   else if (!D.ket || D.ket.thua) tin.push("Thời gian làm nhiệm vụ đã kết thúc, khiêu chiến thất bại.");
   if (D.P) roiPhong(D.P, D.tk);
+  if (D.phong && D.tk && CHO.has(D.tk)) {
+    const cu = S.dang;
+    for (const r of CHO.get(D.tk)) {
+      const rn = r && r.noel;
+      if (rn && rn.ten === h.name && (h.lvl || 1) >= 50 && cu && cu.phong === r.phong && !cu.thu) {
+        tin.push(noelGiao(h, rn));
+        delete r.noel;
+      }
+    }
+  }
   delete S.dang;
   return { tin, di: chet ? { ...ve, hoiSinh: 1 } : ve };
 }
@@ -390,6 +441,11 @@ function nhanGiet(h, Z, id, L) {
   // anh 17/11: thưởng thêm mỗi ải như tổ đội (đi 1 mình = đội trưởng, 1 người — chỉ khi toiThieu cho phép)
   const T1 = Math.round(thuongAi(D.cap, D.dot, B.dot.length, 1) * CF.doiTruong);
   if (T1 > 0) { r.kn += T1; r.tin.push(cauThuong(D.dot, B.dot.length, T1, 1, true)); }
+  const noelSo = !D.thu && (h.lvl || 1) >= 50 && N.BY.has("noelHop") ? noelSoDot(D.dot) : 0;
+  if (noelSo > 0) {
+    const t = Date.now();
+    if (noelMo(t)) r.tin.push(noelGiao(h, { n: noelSo, dot: D.dot, luc: t }, r));
+  }
   if (D.dot < B.dot.length) { D.dot++; D.giet = []; return r; }
   // Mission_Complete: kinh nghiệm theo phút đã dùng
   const giay = Math.floor((Date.now() - D.bd) / 1000), phut = Math.floor(giay / 60), X = B.xong;
@@ -428,10 +484,13 @@ function tomTat(h) {
 // { kn, len, nhan: [{ …món, x, y, z }], tin, luyen? } | null
 function nhanPhong(h, tk, key) {
   const L = CHO.get(tk); if (!h || !L || !L.length) return null;
-  CHO.delete(tk);
+  xoaCho(tk, h.name);
   const kq = { kn: 0, len: 0, nhan: [], tin: [] };
-  h.lvl = h.lvl || 1; h.exp = h.exp || 0;
+  const lvl0 = h.lvl || 1, dang = h.vuotAi && h.vuotAi.dang;
+  let coKet = false;
+  h.lvl = lvl0; h.exp = h.exp || 0;
   for (const r of L) {
+    if (r.noel && r.noel.ten === h.name && lvl0 >= 50 && !r.noel.thu && dang && dang.phong === r.phong && !dang.thu) kq.tin.push(noelGiao(h, r.noel, kq));
     if (r.kn > 0) { h.exp += r.kn; kq.kn += r.kn; kq.len += N.lenCap(h); }
     for (const it of r.mon || []) kq.nhan.push({ ...DO.roiMon(h, key, { z: r.z, x: Math.round(r.x), y: Math.round(r.y) }, { ...it }), x: Math.round(r.x), y: Math.round(r.y), z: r.z });
     if (r.tin) kq.tin.push(...r.tin);
@@ -439,9 +498,10 @@ function nhanPhong(h, tk, key) {
     if (r.rx > 0) kq.tin.push(`Thưởng hoàn thành ải: ${DO.choRuongXanh(h, r.rx)}`);
     if (Array.isArray(r.ev) && r.ev.length) kq.tin.push(bdGiao(h, r.ev)); // anh 16/11 — Báo Đáp Ân Sư: món sự kiện xong ải (tổ đội)
     if (r.xu > 0) { h.xu = (h.xu | 0) + r.xu; kq.tin.push(`Cả đội may mắn: bạn nhận được ${r.xu} Xu`); try { require("./nhat-ky.js").ghi("hiem", tk, h.name, `Vượt Ải tổ đội: + ${r.xu} Xu (may mắn cả đội)`); } catch {} } // anh 16/11 — chữ thường: khung tin Vượt Ải không đọc thẻ màu (soát)
-    if (r.ket) { const D = h.vuotAi && h.vuotAi.dang; if (D && D.phong === r.phong) D.ket = r.ket; }
+    if (r.ket) { const D = h.vuotAi && h.vuotAi.dang; if (D && D.phong === r.phong) { D.ket = r.ket; coKet = true; } }
   }
   const lk = DO.luyenKn(h, kq.kn); if (lk.length) kq.luyen = lk;
+  if (!kq.kn && !kq.len && !kq.nhan.length && !kq.tin.length && !(kq.tinVa && kq.tinVa.length) && !lk.length && !coKet) return null;
   return kq;
 }
 // thành viên vừa được đội trưởng kéo vào ải: { tin, di } (1 lần)
@@ -524,7 +584,7 @@ setInterval(() => {
 
 // ---------- giữ phòng qua khởi động lại máy chủ (anh 18/11 — may-chu/giu-phong.js): lưu lúc tắt, dựng lại ở đúng đám đang đánh, giờ máy chủ tắt không tính ----------
 for (const P of require("./giu-phong.js").giu("va", PHONG,
-  (P) => ({ id: P.id, cap: P.cap, bai: P.bai, bd: P.bd, luc: P.luc, dot: P.dot, sinh: P.sinh, truong: P.truong, tv: P.tv, trong: [...P.trong], hs: P.hs || 1, specV: P.specV | 0 }),
+  (P) => ({ id: P.id, cap: P.cap, bai: P.bai, bd: P.bd, luc: P.luc, dot: P.dot, sinh: P.sinh, truong: P.truong, tv: P.tv, trong: [...P.trong], hs: P.hs || 1, specV: P.specV | 0, ...(P.thu ? { thu: 1 } : {}) }),
   (o, G) => {
     const B = capCua(o.cap);
     if (!B || !(o.dot >= 1 && o.dot <= B.dot.length) || !Array.isArray(o.tv) || !Array.isArray(o.trong) || !o.trong.length || !o.truong) return null;
@@ -554,17 +614,19 @@ function dev(h, b) {
       S.dang = { cap: B.cap, bd: Date.now() + CF.chuanBi * 1000, dot, giet: [], luc: Date.now(), thu: 1 };
       r = { tin: [`Vượt Ải (thử): vào ${B.ten} từ đám ${dot}`], di: { z: B.bai, at: VA.vao } }; break;
     case "dot":
-      if (P) { P.dot = Math.max(1, Math.min(capCua(P.cap).dot.length, b.dot | 0 || 1)); P.sinh = Date.now(); P.ket = null; sinhDotP(P); P.doi = true; r = { tin: [`Vượt Ải (thử, tổ đội): nhảy tới đám ${P.dot}`] }; break; }
+      if (P) { P.thu = 1; P.dot = Math.max(1, Math.min(capCua(P.cap).dot.length, b.dot | 0 || 1)); P.sinh = Date.now(); P.ket = null; sinhDotP(P); P.doi = true; r = { tin: [`Vượt Ải (thử, tổ đội): nhảy tới đám ${P.dot}`] }; break; }
       if (!S.dang) { r = { tin: ["Vượt Ải (thử): đang không ở trong ải"] }; break; }
-      S.dang.dot = Math.max(1, Math.min(capCua(S.dang.cap).dot.length, b.dot | 0 || 1)); S.dang.giet = []; delete S.dang.ket;
+      S.dang.thu = 1; S.dang.dot = Math.max(1, Math.min(capCua(S.dang.cap).dot.length, b.dot | 0 || 1)); S.dang.giet = []; delete S.dang.ket;
       r = { tin: [`Vượt Ải (thử): nhảy tới đám ${S.dang.dot}`] }; break;
     case "xong": {
       if (P) {
         if (P.ket || Date.now() < P.sinh) { r = { tin: ["Vượt Ải (thử, tổ đội): đám chưa ra / ải đã kết thúc"] }; break; }
+        P.thu = 1;
         const d0 = P.dot; for (const m of [...P.q.values()]) if (m.mau > 0 && P.dot === d0) quaiChetP(P, m);
         P.doi = true; r = { tin: [`Vượt Ải (thử, tổ đội): hạ hết đám ${d0} — thưởng vào nhịp sau`] }; break;
       }
       const D = S.dang; if (!D || D.ket) { r = { tin: ["Vượt Ải (thử): đang không đánh đám nào"] }; break; }
+      D.thu = 1;
       const d = capCua(D.cap).dot[D.dot - 1], kq = { kn: 0, tin: [] };
       for (const [i, g] of d.ds.entries()) while ((D.giet[i] | 0) < g.n) { const x = nhanGiet(h, N.ZONES.get(capCua(D.cap).bai), g.tpl || g.tieuBoss[0][0], g.lv); if (!x) break; kq.kn += x.kn; kq.tin.push(...x.tin, ...x.loa.map((t) => t.replace(/<color(?:=[^>]*)?>/g, ""))); } // loa có thẻ màu (tin hệ thống) — khung tin thường bỏ thẻ
       if (kq.kn) { h.exp = (h.exp || 0) + kq.kn; N.lenCap(h); }

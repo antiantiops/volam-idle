@@ -27,5 +27,15 @@
   "noelMatNaTuanLocDacBiet": { "n": "Mặt nạ Tuần lộc đặc biệt", "ic": "item/script/item_chrismasbox.png", "c": [1, 1], "ktc": 1, "dung": null },
   "tetMatNaDauOngDia": { "n": "Mặt nạ Đầu ông địa", "ic": "item/obj_item_giftb.png", "c": [1, 1], "ktc": 1, "dung": null },
   "tetMatNaNamSu": { "n": "Mặt nạ Nam sư", "ic": "item/obj_item_giftb.png", "c": [1, 1], "ktc": 1, "dung": null },
-  "tetMatNaBacSi": { "n": "Mặt nạ Bắc sư", "ic": "item/obj_item_giftb.png", "c": [1, 1], "ktc": 1, "dung": null }
+  "tetMatNaBacSi": { "n": "Mặt nạ Bắc sư", "ic": "item/obj_item_giftb.png", "c": [1, 1], "ktc": 1, "dung": null },
+  "noelV5NguoiTuyetXanhDB": { "n": "Người tuyết choàng khăn xanh (đặc biệt)", "ic": "item/christmas2006/snowman_greenscarf.png", "c": [1, 1], "ktc": 1, "dung": { "loai": "thangSuKien" } },
+  "noelV5NguoiTuyetDoDB": { "n": "Người tuyết choàng khăn đỏ (đặc biệt)", "ic": "item/christmas2006/snowman_redscarf.png", "c": [1, 1], "ktc": 1, "dung": { "loai": "thangSuKien" } },
+  "noelV5NguoiTuyetDB": { "n": "Người tuyết đặc biệt", "ic": "item/christmas2006/snowman_normal.png", "c": [1, 1], "ktc": 1, "dung": { "loai": "thangSuKien" } },
+  "noelV5NguoiTuyetXanh": { "n": "Người tuyết choàng khăn xanh (thường)", "ic": "item/christmas2006/snowman_greenscarf.png", "c": [1, 1], "ktc": 1, "dung": { "loai": "thangSuKien" } },
+  "noelV5NguoiTuyetDo": { "n": "Người tuyết choàng khăn đỏ (thường)", "ic": "item/christmas2006/snowman_redscarf.png", "c": [1, 1], "ktc": 1, "dung": { "loai": "thangSuKien" } },
+  "noelV5NguoiTuyet": { "n": "Người tuyết thường", "ic": "item/christmas2006/snowman_normal.png", "c": [1, 1], "ktc": 1, "dung": { "loai": "thangSuKien" } },
+  "ms:1005": { "n": "Hạt May Mắn", "ic": "item/questkey/seed_lucky.png", "c": [1, 1], "dung": null },
+  "ms:1006": { "n": "Hạt Hoa Hồng", "ic": "item/questkey/seed_rose.png", "c": [1, 1], "dung": null },
+  "ms:1007": { "n": "Hạt Thủy Tinh", "ic": "item/questkey/seed_crystal.png", "c": [1, 1], "dung": null },
+  "ms:1008": { "n": "Hạt Hoàng Kim", "ic": "item/questkey/seed_gold.png", "c": [1, 1], "dung": null }
 }

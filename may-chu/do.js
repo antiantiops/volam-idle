@@ -67,9 +67,24 @@ const HK_BAO = ["hk:217", "hk:218", "hk:219", "hk:220", "hk:399", "hk:400", "hk:
 const NKD = () => require("./nhat-ky"); // sổ hoạt động từng tài khoản (nạp lúc dùng)
 const NG = require("./nguon-mon"); // nguồn gốc món: mã riêng + nơi sinh ra + đường đi (anh 18/11 tối — may-chu/nguon-mon.js)
 const CHR = doc("assets/data/char.json"), MS = doc("assets/data/mobstats.json"), CFG = require("./cau-hinh-qt").apDung(doc("cau-hinh.json")); // + phần quản trị sửa ở F10 → Cấu hình (du-lieu/cau-hinh-qt.json — anh 11/11)
-// cau-hinh.json: thangSuKien { bat, drop: { bat, tiLe } }; mặc định tắt, chỉ chạy đúng tháng VN.
-require("./thang-su-kien").cf({ bat: CFG.thangSuKien?.bat === true, drop: { bat: CFG.thangSuKien?.drop?.bat === true, tiLe: CFG.thangSuKien?.drop?.tiLe } });
+// cau-hinh.json: thangSuKien { bat, drop: { bat, tiLe }, noelVer5: { bat } }; mặc định tắt, chỉ chạy đúng tháng VN.
+require("./thang-su-kien").cf({ bat: CFG.thangSuKien?.bat === true, drop: { bat: CFG.thangSuKien?.drop?.bat === true, tiLe: CFG.thangSuKien?.drop?.tiLe }, noelVer5: CFG.thangSuKien?.noelVer5 });
 const hetThang = (now = Date.now()) => { const vn = new Date(now + 7 * 3600000); return Date.UTC(vn.getUTCFullYear(), vn.getUTCMonth() + 1, 1) - 7 * 3600000; };
+const laThangNoel = (now) => new Date(now + 7 * 3600000).getUTCMonth() === 11;
+let MAPLIST_CACHE = undefined;
+function bacRoiMap(zoneId) {
+  if (MAPLIST_CACHE === undefined) {
+    try { MAPLIST_CACHE = doc("assets/data/maplist.json"); } catch { MAPLIST_CACHE = null; }
+  }
+  const maps = MAPLIST_CACHE && MAPLIST_CACHE.maps;
+  if (!maps || typeof maps !== "object") return null;
+  const k = String(zoneId);
+  if (!Object.hasOwn(maps, k)) return null;
+  const drop = maps[k] && maps[k].drop;
+  if (typeof drop !== "string" || !drop) return null;
+  const m = /^npcdroprate(\d+)\.ini$/i.exec(path.posix.basename(drop.replace(/\\/g, "/")));
+  return m ? Number(m[1]) : null;
+}
 const THUOC = doc("assets/data/thuoc.json"), TC = CFG.thuoc || { chongToiDa: 60, muaToiDa: 60, banLai: 0.5 };
 const TD = CFG.trenDat || { giay: 133, toiDa: 100 };
 const MAPS = doc("assets/web/map/map.json"), FULL = (() => { try { return doc("assets/web/map/full/index.json"); } catch { return null; } })();
@@ -1138,16 +1153,33 @@ function gietQuai(h, ds, ctx) {
       if (!thuyen && !sat && !va) { B.sinceBoss = boss ? 0 : B.sinceBoss + 1; B.sinceTA = ta ? 0 : (B.sinceTA ?? TA_GAP) + 1; }
     }
     const cho = { z: r[0] | 0, x: toaDo(r[5]), y: toaDo(r[6]) }; // chỗ con quái chết: tiền / món rơi ở đó
+    const capTruoc = h.lvl | 0;
+    const ptGiet = (r[7] | 0) === 1 || !!ctx.pt, khongRoi = ctx.khongRoi || (ptGiet && !sat); // ctx.pt: quái chung phân thân giết (quai-chung.js nhanThuong)
+    if (thuyen && boss && id === 725 && PLD().THUYEN.includes(cho.z) && !ctx.admin && !ctx.chung && !ctx.ph && !khongRoi && h.pld?.dl === 1 && !h.pld.thu && capTruoc >= 50 && CFG.thangSuKien?.noelVer5?.bat === true && laThangNoel(t)) {
+      const q = { mon: [{ k: "noelHop", n: 10, het: hetThang(t) }], kbh: 0, luc: t, he: 1, loi: "Giáng Sinh: Thủy Tặc Đầu Lĩnh" };
+      let tin = "Nhận 10 Hộp quà Giáng Sinh.";
+      try { taoQua(h, q); kq.tui = 1; }
+      catch { (h.quaCho ||= []).push(q); tin = "Hành trang không đủ chỗ — 10 Hộp quà Giáng Sinh đang chờ."; }
+      (kq.tin ||= []).push(tin);
+    }
     // quái Vượt Ải: không kinh nghiệm / tiền / đồ riêng (npcs.txt Exp 0, Treasure 0) — thưởng theo đám (award.lua award_batch)
     const { e, len, g: g0, its } = va ? { e: 0, len: 0, g: 0, its: [] } : motCon(h, Z, id, L, boss, se, luck, kx, ta && !thuyen && !!taBai(Z), chia && ((e0, L2, Z2) => chia(e0, L2, Z2, cho.x, cho.y)), sat, ctx.chung && !ctx.ph ? QC_THUONG : 1, hk);
     // r[7] = 1: phân thân giết (anh 05/11 — may-chu/phan-than.js): người thuê nhận đủ kinh nghiệm, không tiền, không đồ (cả món đặc biệt)
     // Boss Sát thủ phân thân hạ (anh 12/11 "phân thân đánh chết boss sát thủ, đồ rơi ra tính cho ng thuê"): rơi như người thuê tự hạ (tiền + bảng boss bên dưới)
-    const ptGiet = (r[7] | 0) === 1 || !!ctx.pt, khongRoi = ctx.khongRoi || (ptGiet && !sat); // ctx.pt: quái chung phân thân giết (quai-chung.js nhanThuong)
     const g = khongRoi ? 0 : g0;
     if (khongRoi) its.length = 0;
     if (!va && !sat && !thuyen && !ptGiet && !ctx.ph && !khongRoi && !boss && !ta && Z && FARM.has(Z.kind)) {
-      const roi = require("./thang-su-kien").drop(h, cho.z, t);
-      if (roi) { const het = hetThang(t); its.push(...roi.award.map((a) => ({ ...a, het }))); }
+      if (CFG.thangSuKien?.noelVer5?.bat === true && laThangNoel(t)) {
+        if (ctx.chung === true && (r[3] | 0) === 0) {
+          const bacRoi = bacRoiMap(cho.z);
+          if (bacRoi !== null && require("./pgaming-noel").roiHopNoel({ bat: true, now: t, cap: capTruoc, bacRoi, map: cho.z, quaiThuong: true }, crypto.randomInt(1, 1000001))) {
+            its.push({ k: "noelHop", n: 1, het: hetThang(t) });
+          }
+        }
+      } else {
+        const roi = require("./thang-su-kien").drop(h, cho.z, t);
+        if (roi) { const het = hetThang(t); its.push(...roi.award.map((a) => ({ ...a, het }))); }
+      }
     }
     kq.kn += e; kq.len += len; kq.n++;
     if (!va && !sat && !thuyen && !ptGiet && !ctx.ph) kq.nBh++; // bang hội đợt 2: quái tính cống hiến (bỏ quái ải, boss sát thủ, thuyền PLĐ, quái phân thân, quân Phong Hỏa — có nguồn riêng)
@@ -1161,6 +1193,7 @@ function gietQuai(h, ds, ctx) {
       if (VK.kn) { h.exp += VK.kn; kq.kn += VK.kn; kq.len += lenCap(h); }
       for (const m of VK.mon) its.push({ ...m }); // Ngũ Hoa Ngọc Lộ Hoàn (hết đám) / Hộp lễ vật vượt ải (boss) — không rơi trang bị (anh 28/10)
       if (VK.tin.length) (kq.tin = kq.tin || []).push(...VK.tin);
+      if (VK.tui) kq.tui = 1;
       if (VK.loa.length) (kq.loa = kq.loa || []).push(...VK.loa); // báo cả máy chủ (api.js — như client broadcast)
       if (VK.tin.length) try { NKD().ghi("hd", ctx.ten, h.name, `Vượt Ải: ${VK.tin.join(" ")}`); } catch { /* nhật ký chung theo hoạt động (anh 18/11) */ }
     }
@@ -1984,17 +2017,21 @@ function tuiThuThang(h, it, award, now, het) {
   }
   const selN = it.n === undefined ? 1 : it.n;
   if (!Number.isSafeInteger(selN) || selN < 1) loi("Không có món này trong túi");
-  if (!award || typeof award !== "object" || typeof award.k !== "string") loi("Phần thưởng không hợp lệ");
-  const x = BY.get(award.k);
-  if (!x) loi("Không có món này");
-  if (!Number.isSafeInteger(award.n) || award.n <= 0) loi("Số lượng phần thưởng không hợp lệ");
+  let x = null;
+  if (award !== null) {
+    if (!award || typeof award !== "object" || typeof award.k !== "string") loi("Phần thưởng không hợp lệ");
+    x = BY.get(award.k);
+    if (!x) loi("Không có món này");
+    if (!Number.isSafeInteger(award.n) || award.n <= 0) loi("Số lượng phần thưởng không hợp lệ");
+  }
   const draft = { bag: h.bag.map((o) => ({ ...o })), uN: h.uN | 0 };
   if (selN === 1) draft.bag.splice(idx, 1);
   else draft.bag[idx].n = selN - 1;
+  if (award === null) return draft;
   const kb = khoaCua(it);
   if (Object.hasOwn(TSK, x.k)) {
     if (!hetHopLe(het) || het <= t) loi("Hạn sử dụng phần thưởng không hợp lệ");
-    const mx = chongMax(x.k);
+    const mx = ["ms:1005", "ms:1006", "ms:1007", "ms:1008"].includes(x.k) ? 1 : chongMax(x.k);
     let con = award.n;
     while (con > 0) {
       const mon = { k: x.k, n: Math.min(con, mx), het, ...kb, u: ++draft.uN };
@@ -2004,15 +2041,20 @@ function tuiThuThang(h, it, award, now, het) {
     return draft;
   }
   if (x.chi || x.doi || !xepChong(x)) loi("Phần thưởng chưa hỗ trợ");
+  let han;
+  if (award.hetThang === true) {
+    if (!hetHopLe(het) || het <= t) loi("Hạn sử dụng phần thưởng không hợp lệ");
+    han = het;
+  }
   draft.bag = draft.bag.filter((o) => !(o && o.k === x.k && Object.hasOwn(o, "het") && o.het !== undefined && (!hetHopLe(o.het) || o.het <= t)));
-  themChong(draft, x, award.n, kb.kbh, false, kb.kbhHet);
+  themChong(draft, x, award.n, kb.kbh, false, kb.kbhHet, han);
   return draft;
 }
 // Craft/mốc Noel-Tết: caller có plan đã kiểm điều kiện; commit nguyên khối hoặc rollback.
 function thangSuKien(h, plan, now = Date.now()) {
   if (!plan || !plan.ok || !Array.isArray(plan.consume) || !Array.isArray(plan.award)) loi("Kế hoạch sự kiện không hợp lệ");
   const het = hetThang(now);
-  const old = { bag: h.bag, uN: h.uN, gold: h.gold, exp: h.exp, thangSuKien: h.thangSuKien };
+  const old = { bag: h.bag, uN: h.uN, gold: h.gold, exp: h.exp };
   try {
     h.bag = h.bag.map((it) => ({ ...it }));
     for (const need of plan.consume) {
@@ -2026,8 +2068,19 @@ function thangSuKien(h, plan, now = Date.now()) {
       if (con) loi("Nguyên liệu đã thay đổi, hãy thử lại");
     }
     for (const award of plan.award) {
+      if (!award || typeof award !== "object") loi("Phần thưởng không hợp lệ");
       const x = BY.get(award.k); if (!x || !(award.n > 0)) loi("Phần thưởng không hợp lệ");
-      for (let i = 0; i < award.n; i++) if (!vaoO(h.bag, { k: award.k, n: 1, ...(Object.hasOwn(TSK, award.k) ? { het } : {}), u: ++h.uN })) loi("Hành trang không đủ chỗ");
+      const isNoelVer5 = plan.ver5 === true && plan.kind === "noel";
+      const hasExp = Object.hasOwn(award, "nExpiredTime") && award.nExpiredTime !== undefined;
+      if (hasExp && (!isNoelVer5 || (award.k !== "ms:71" && award.k !== "ms:1181") || award.nExpiredTime !== 43200)) loi("Phần thưởng không hợp lệ");
+      const isVer5Horse = isNoelVer5 && /^horse:5[1-5]$/.test(award.k);
+      const hetAward = hasExp ? now + 43200 * 60000 : (Object.hasOwn(TSK, award.k) ? het : undefined);
+      for (let i = 0; i < award.n; i++) {
+        const mon = isVer5Horse
+          ? { k: award.k, d: [], m: 1, vv: 1, u: ++h.uN }
+          : { k: award.k, n: 1, ...(hetAward !== undefined ? { het: hetAward } : {}), u: ++h.uN };
+        if (!vaoO(h.bag, mon)) loi("Hành trang không đủ chỗ");
+      }
     }
     h.gold = (h.gold || 0) + (plan.goldDelta || 0);
     if (h.gold < 0) loi("Ngân lượng đã thay đổi, hãy thử lại");
@@ -2092,7 +2145,7 @@ function dungVat(h, it, b, key, qt = false) {
     case "thangSuKien": { // Mở hộp hoặc dùng thành phẩm Noel / Tết (may-chu/thang-su-kien.js)
       if (LDA().chan(tkCuaKhoa(key), BAI_NAY.get(key), oCuaKhoa(key))) loi("Trong sân Công Bình Tử không dùng được vật phẩm này — rời sân rồi dùng");
       const laHop = D.hop === "noel" || D.hop === "tet";
-      if (oTrongTui(h) < (laHop ? 6 : 10)) loi(`Hành trang cần ít nhất ${laHop ? 6 : 10} ô trống mới ${laHop ? "mở" : "dùng"} được ${x.n.trim()}`);
+      const minO = laHop ? 6 : 10;
       const now = Date.now();
       const het = hetThang(now);
       let draft = null;
@@ -2101,20 +2154,33 @@ function dungVat(h, it, b, key, qt = false) {
         thangSuKien: h.thangSuKien,
         demMon: (k) => (k === it.k ? (it.n ?? 1) : 0),
         duCho: (add) => {
-          draft = tuiThuThang(h, it, add[0], now, het);
+          if (oTrongTui(h) < minO) loi(`Hành trang cần ít nhất ${minO} ô trống mới ${laHop ? "mở" : "dùng"} được ${x.n.trim()}`);
+          draft = tuiThuThang(h, it, add[0] ?? null, now, het);
           return true;
         },
       };
       const SK = require("./thang-su-kien.js");
       const plan = laHop ? SK.moHop(view, D.hop, now) : SK.dung(view, it.k, now);
       if (!plan.ok) loi(plan.msg);
+      const laVer5Thuong = !laHop && plan.ver5 === true && plan.special !== true;
+      if (!laVer5Thuong && oTrongTui(h) < minO) loi(`Hành trang cần ít nhất ${minO} ô trống mới ${laHop ? "mở" : "dùng"} được ${x.n.trim()}`);
+      if (!draft) draft = tuiThuThang(h, it, plan.award[0] ?? null, now, het);
+      const ticks = laVer5Thuong ? Math.max(0, Math.floor(+plan.buff440Ticks || 0)) : 0;
+      if (ticks > 0) buffDem(h, key, true);
       h.bag = draft.bag;
       h.uN = draft.uN;
       if (plan.nextEventState) h.thangSuKien = plan.nextEventState;
       const e = Math.max(0, Math.floor(+plan.expDelta || 0));
       if (e > 0) { h.exp = (h.exp || 0) + e; lenCap(h); }
-      const tenQua = String((BY.get(plan.award[0].k) || {}).n || tenMon(plan.award[0])).trim();
+      if (ticks > 0) {
+        h.buff = h.buff || {};
+        h.buff.x2 = ticks / 18;
+      }
+      const monQua = plan.award && plan.award[0];
+      const tenQua = monQua ? String((BY.get(monQua.k) || {}).n || tenMon(monQua)).trim() : "";
       if (laHop) return { msg: `Mở ${x.n.trim()}: nhận được ${tenQua}` };
+      if (ticks > 0 && !tenQua) return { msg: `Sử dụng ${x.n.trim()}: nhận được hiệu quả nhân đôi kinh nghiệm trong ${gioPhutS(ticks / 18)}${e > 0 ? ` và ${e.toLocaleString("vi-VN")} điểm kinh nghiệm` : ""}` };
+      if (!tenQua) return { msg: `Sử dụng ${x.n.trim()}${e > 0 ? `: nhận được ${e.toLocaleString("vi-VN")} điểm kinh nghiệm` : ""}` };
       return { msg: `Sử dụng ${x.n.trim()}: nhận được ${tenQua}${e > 0 ? ` và ${e.toLocaleString("vi-VN")} điểm kinh nghiệm` : ""}` };
     }
     case "ngua": { // mã bài (market_pack.lua): 1 con ngựa — hạn D.ngay ngày từ lúc dùng (anh 27/10), hết hạn thì biến mất (chuan)
@@ -2522,7 +2588,12 @@ function taoQua(h, q) {
         }
       } else if (loai === "chong") {
         const n = clamp(m.n | 0 || 1, 1, 999);
-        themChong(h, x, n, KHONG_KHOA.has(x.k) ? 0 : kb0.kbh | 0, false, kb0.kbhHet); donChong(h, x.k);
+        let han;
+        if (x.k === "noelHop" && Object.hasOwn(m, "het") && m.het !== undefined) {
+          han = typeof m.het === "number" && Number.isFinite(m.het) ? Math.floor(m.het) : NaN;
+          if (!(han > 0) || han <= Date.now()) { ds.push(`${n} ${ten} (${han > 0 ? "đã hết hạn" : "hạn sử dụng không hợp lệ"})`); continue; }
+        }
+        themChong(h, x, n, KHONG_KHOA.has(x.k) ? 0 : kb0.kbh | 0, false, kb0.kbhHet, han); donChong(h, x.k);
         ds.push(`${n} ${ten}`);
       } else {
         const n = clamp(m.n | 0 || 1, 1, 20);

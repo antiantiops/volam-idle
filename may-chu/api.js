@@ -407,7 +407,7 @@ function nhip(res, tk, b, trang) {
     // chủ, lệnh vào ải khi đội trưởng báo danh (túi / tiền đã trừ phí), trạng thái phòng khi kênh chưa mở
     if (b.vad) VAI.danhP(tk.ten, b.vad);
     const va = VAI.nhanPhong(h, tk.ten, key);
-    if (va) { ket.vaKq = va; ket.nv = nvCua(h); ghi = true; ghiHd("Vượt Ải", tk.ten, h.name, va.kn > 0 ? `+${va.kn} kinh nghiệm` : "", va.tin, va.tinVa || [], va.nhan.length ? `rơi: ${chuMonNk(va.nhan)}` : ""); }
+    if (va) { if (va.tui) { delete va.tui; ket.tui = tuiCua(h); } ket.vaKq = va; ket.nv = nvCua(h); ghi = true; ghiHd("Vượt Ải", tk.ten, h.name, va.kn > 0 ? `+${va.kn} kinh nghiệm` : "", va.tin, va.tinVa || [], va.nhan.length ? `rơi: ${chuMonNk(va.nhan)}` : ""); }
     // Boss Sát thủ (anh 18/11 — sat-thu.js nhanDoi): đội trưởng vừa nhận nhiệm vụ giùm -> câu báo + nhân vật mới (trình duyệt dựng boss)
     { const sd = SAT.layDoi(tk.ten); if (sd) { for (const t of sd) TG.thongBaoTk(t, tk.ten); ket.nv = nvCua(h); ghiHd("Boss Sát thủ", tk.ten, h.name, sd); } }
     const vaDi = VAI.layDi(tk.ten);
@@ -810,6 +810,7 @@ async function xuLyApi(req, res, p) {
       if (!plan || !plan.ok) return loi(res, 400, (plan && plan.msg) || "Việc sự kiện không hợp lệ");
       const gan = NG.kiemGan(tk.ten, h, "leQuan");
       if (!gan.ok || gan.zone !== 53) return loi(res, 400, "Hãy đứng gần Lễ quan ở Ba Lăng", "xa-npc");
+      if (viec === "moc" && plan.ver5 === true && DO.NOI.oTrong(h) < 30) return loi(res, 400, "Túi cần ít nhất 30 ô trống để nhận mốc");
       DO.thangSuKien(h, plan, now); DO.chuan(h); D.ghiTk(tk);
       const qua = plan.award.map((x) => `${x.n > 1 ? x.n + " " : ""}${DO.tenMon(x).trim()}`).join(", ");
       const msg = viec === "che" ? `Chế tạo thành công: ${qua}` : `Nhận mốc ${plan.tier}: ${qua}`;

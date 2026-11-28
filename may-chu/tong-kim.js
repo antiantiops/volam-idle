@@ -819,18 +819,29 @@ function traoThuong(m, thang, soai, hs2, hang, t, hangNg = 0, nsk = []) {
     const q = { mon, kbh: T.khoa ? N.KBH_VV : 0 };
     try { DO.taoQua(h, q); } catch { h.quaCho = [...(h.quaCho || []), { ...q, luc: t, tk: 1 }]; cho = true; }
   }
+  const TSK = require("./thang-su-kien");
+  const noelSo = TSK.cf().noelVer5?.bat === true && TSK.dang("noel", t) && (h.lvl || 1) >= 50
+    ? (m.diem >= 3000 ? 20 : m.diem >= 1000 ? 10 : 0)
+    : 0;
+  let noelCho = false;
+  if (noelSo > 0 && N.BY.has("noelHop")) {
+    const tVn = new Date(t + GV.VN), qNoel = { mon: [{ k: "noelHop", n: noelSo, het: Date.UTC(tVn.getUTCFullYear(), tVn.getUTCMonth() + 1, 1) - GV.VN }], kbh: 0 };
+    try { DO.taoQua(h, qNoel); } catch { h.quaCho = [...(h.quaCho || []), { ...qNoel, luc: t, tk: 1 }]; noelCho = true; }
+  }
   h.exp = (h.exp || 0) + kn; h.lvl = h.lvl || 1; const len = N.lenCap(h);
   h.diemTk = (h.diemTk | 0) + diemTk;
   const tenHt = String(DO.tenMon({ k: T.htMon })).trim();
+  const tenNoel = noelSo > 0 && N.BY.has("noelHop") ? String(DO.tenMon({ k: "noelHop" })).trim() : "";
   const L = [`Tống Kim${D.gio ? ` ${D.gio}` : ""}: phe ${TEN_PHE[thang]} thắng — phe ta ${win ? "thắng" : "thua"}; ${vn(m.diem)} điểm trận, hạng ${hang}.`,
     ...(htTop ? [`Top ${hangNg} người chơi trận này: thưởng thêm ${htTop} ${String(DO.tenMon({ k: T.htMon })).trim()}.`] : []),
     `Nhận ${vn(diemTk)} điểm Tống Kim${hs2 > 1 ? ` (Thiên Tử ×${hs2})` : ""}, ${vn(kn)} kinh nghiệm${len ? ` (lên ${len} cấp)` : ""}${ht ? `, ${ht} ${tenHt}` : ""}${hc ? `, 1 ${String(DO.tenMon({ k: T.hcMon })).trim()} (hết hạn 24:00 ngày mai)` : ""}.`,
-    ...(evChu ? [`Hoạt động báo đáp ân sư: nhận thêm ${evChu}.`] : [])];
+    ...(evChu ? [`Hoạt động báo đáp ân sư: nhận thêm ${evChu}.`] : []),
+    ...(tenNoel ? [`Sự kiện Giáng Sinh: ${noelCho ? `hành trang không đủ chỗ — ${noelSo} ${tenNoel} đang chờ, dọn túi là tự nhận.` : `nhận thêm ${noelSo} ${tenNoel}.`}`] : [])];
   if (cho) L.push("Hành trang không đủ chỗ — vật phẩm thưởng đang chờ, dọn túi là tự nhận.");
   h.tkTin = [...(Array.isArray(h.tkTin) ? h.tkTin : []), ...L].slice(-20);
   D2.ghiTk(acc);
   try { BHO().cong(m.tk, m.o, m.ten, "tongKim", null, { diem: m.diem }); } catch {} // bang hội đợt 2: điểm trận × 0,03 (từ 100 điểm, ≤ 150) — không nhân Thiên Tử
-  NK().ghi("hd", m.tk, h.name, `Tống Kim${D.gio ? ` ${D.gio}` : ""} (${win ? "thắng" : "thua"}, ${m.diem} điểm trận): +${diemTk} điểm Tống Kim, +${kn} kinh nghiệm${ht ? `, +${ht} ${tenHt}` : ""}${hc ? ", +1 Huân công bài" : ""}${evChu ? `, +${evChu} (báo đáp ân sư)` : ""}${cho ? " (túi đầy — chờ nhận)" : ""}`);
+  NK().ghi("hd", m.tk, h.name, `Tống Kim${D.gio ? ` ${D.gio}` : ""} (${win ? "thắng" : "thua"}, ${m.diem} điểm trận): +${diemTk} điểm Tống Kim, +${kn} kinh nghiệm${ht ? `, +${ht} ${tenHt}` : ""}${hc ? ", +1 Huân công bài" : ""}${evChu ? `, +${evChu} (báo đáp ân sư)` : ""}${tenNoel ? `, +${noelSo} ${tenNoel}` : ""}${cho || noelCho ? " (túi đầy — chờ nhận)" : ""}`);
   return { diemTk, ht, kn, hc };
 }
 // anh 18/11 — nguồn sự kiện cho người không nhận quà Tống Kim (rời trận trước khi kết thúc / dưới diemMin) mà ở trong trận đủ lâu: ghi thẳng tài khoản như traoThuong

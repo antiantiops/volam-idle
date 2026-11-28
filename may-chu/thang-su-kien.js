@@ -34,6 +34,7 @@ const TET_BOX = [
 const RECIPES = {
   noelThuong: {
     kind: "noel",
+    ver: 4,
     in: [
       ["noelHoaTuyet", 5],
       ["noelCanhThong", 2],
@@ -45,6 +46,7 @@ const RECIPES = {
   },
   noelXanh: {
     kind: "noel",
+    ver: 4,
     in: [
       ["noelHoaTuyet", 5],
       ["noelCanhThong", 2],
@@ -57,6 +59,7 @@ const RECIPES = {
   },
   noelDo: {
     kind: "noel",
+    ver: 4,
     in: [
       ["noelHoaTuyet", 5],
       ["noelCanhThong", 2],
@@ -66,6 +69,85 @@ const RECIPES = {
     ],
     gold: 0,
     out: "noelNguoiTuyetDo",
+  },
+  noelV5Thuong: {
+    kind: "noel",
+    ver: 5,
+    in: [
+      ["noelHoaTuyet", 5],
+      ["noelCanhThong", 2],
+      ["noelCaRot", 1],
+      ["noelNon", 1],
+    ],
+    gold: 0,
+    out: "noelV5NguoiTuyet",
+  },
+  noelV5Xanh: {
+    kind: "noel",
+    ver: 5,
+    in: [
+      ["noelHoaTuyet", 5],
+      ["noelCanhThong", 2],
+      ["noelCaRot", 1],
+      ["noelNon", 1],
+      ["noelKhanXanh", 1],
+    ],
+    gold: 0,
+    out: "noelV5NguoiTuyetXanh",
+  },
+  noelV5Do: {
+    kind: "noel",
+    ver: 5,
+    in: [
+      ["noelHoaTuyet", 5],
+      ["noelCanhThong", 2],
+      ["noelCaRot", 1],
+      ["noelNon", 1],
+      ["noelKhanDo", 1],
+    ],
+    gold: 0,
+    out: "noelV5NguoiTuyetDo",
+  },
+  noelV5ThuongDB: {
+    kind: "noel",
+    ver: 5,
+    in: [
+      ["noelHoaTuyet", 5],
+      ["noelCanhThong", 2],
+      ["noelCaRot", 1],
+      ["noelNon", 1],
+      ["noelCayThong", 1],
+    ],
+    gold: 10000,
+    out: "noelV5NguoiTuyetDB",
+  },
+  noelV5XanhDB: {
+    kind: "noel",
+    ver: 5,
+    in: [
+      ["noelHoaTuyet", 5],
+      ["noelCanhThong", 2],
+      ["noelCaRot", 1],
+      ["noelNon", 1],
+      ["noelKhanXanh", 1],
+      ["noelCayThong", 1],
+    ],
+    gold: 20000,
+    out: "noelV5NguoiTuyetXanhDB",
+  },
+  noelV5DoDB: {
+    kind: "noel",
+    ver: 5,
+    in: [
+      ["noelHoaTuyet", 5],
+      ["noelCanhThong", 2],
+      ["noelCaRot", 1],
+      ["noelNon", 1],
+      ["noelKhanDo", 1],
+      ["noelCayThong", 1],
+    ],
+    gold: 20000,
+    out: "noelV5NguoiTuyetDoDB",
   },
   tetThuong: {
     kind: "tet",
@@ -266,6 +348,7 @@ let _cfg = {
   bat: false,
   thang: null,
   drop: { bat: false, tiLe: 0 },
+  noelVer5: { bat: false },
 };
 
 const EXPIRY_FIELDS = ["het", "hetHan", "han", "hanDung", "hanSuDung", "expiresAt", "expireAt", "expiredAt"];
@@ -316,15 +399,24 @@ function cf(next) {
       }
       nextDrop = { bat: dropBat, tiLe: dropRate };
     }
+    let nextNoelVer5 = _cfg.noelVer5;
+    if (own(next, "noelVer5")) {
+      const nv5 = next.noelVer5;
+      nextNoelVer5 = {
+        bat: !!nv5 && typeof nv5 === "object" && !Array.isArray(nv5) && own(nv5, "bat") && nv5.bat === true,
+      };
+    }
     _cfg = {
       bat: nextBat,
       thang: nextThang,
       drop: { ...nextDrop },
+      noelVer5: { bat: !!(nextNoelVer5 && nextNoelVer5.bat === true) },
     };
   }
   return {
     ..._cfg,
     drop: { ...(_cfg.drop || { bat: false, tiLe: 0 }) },
+    noelVer5: { bat: !!(_cfg.noelVer5 && _cfg.noelVer5.bat === true) },
   };
 }
 
@@ -350,9 +442,21 @@ function activeMonth(now) {
 // Trạng thái hoạt động event: trả về boolean hoặc chi tiết nếu caller cần
 function dang(kind, now) {
   const C = cf();
-  if (!C.bat) return false;
+  const noelV5 = !!(C.noelVer5 && C.noelVer5.bat === true);
+  if (!C.bat && !noelV5) return false;
   const ts = normalizeNow(now);
   if (!Number.isFinite(ts)) return false;
+  if (noelV5) {
+    const realDec = vnParts(ts).month === 12;
+    if (kind != null) {
+      if (kind === "noel") return realDec;
+      if (kind === "tet") return !!C.bat && activeMonth(ts) === KIND_MONTH.tet;
+      return false;
+    }
+    if (realDec) return "noel";
+    if (C.bat && activeMonth(ts) === KIND_MONTH.tet) return "tet";
+    return false;
+  }
   const m = activeMonth(ts);
   if (kind != null) {
     return typeof kind === "string" && own(KIND_MONTH, kind) && KIND_MONTH[kind] === m;
@@ -476,6 +580,66 @@ function pickUniform(arr, randomFn) {
   return arr[arr.length - 1];
 }
 
+const { randomInt } = require("node:crypto");
+const { THUONG_NOEL_V5, MOC_NOEL_V5, chonThuongNoel } = require("./pgaming-noel.js");
+
+const NOEL_V5_DB_CAPS = {
+  noelV5NguoiTuyetDB: THUONG_NOEL_V5.noelV5NguoiTuyetDB.cap,
+  noelV5NguoiTuyetXanhDB: THUONG_NOEL_V5.noelV5NguoiTuyetXanhDB.cap,
+  noelV5NguoiTuyetDoDB: THUONG_NOEL_V5.noelV5NguoiTuyetDoDB.cap,
+};
+const NOEL_V5_DAILY_CAPS = {
+  noelV5NguoiTuyet: 5,
+  noelV5NguoiTuyetXanh: 5,
+  noelV5NguoiTuyetDo: 5,
+};
+
+function normalizeVer5Entry(rawVer5) {
+  const isObj = (v) => !!v && typeof v === "object" && !Array.isArray(v);
+  if (!isObj(rawVer5) || Object.keys(rawVer5).length === 0) return null;
+
+  const rawUsed = own(rawVer5, "used") && isObj(rawVer5.used) ? rawVer5.used : null;
+  const rawDaily = own(rawVer5, "daily") && isObj(rawVer5.daily) ? rawVer5.daily : null;
+  const rawClaimed = own(rawVer5, "claimed") && isObj(rawVer5.claimed) ? rawVer5.claimed : null;
+
+  let day = null;
+  if (rawDaily && own(rawDaily, "day") && typeof rawDaily.day === "string" && /^\d{4}-\d{2}-\d{2}$/.test(rawDaily.day)) {
+    const y = Number(rawDaily.day.slice(0, 4));
+    const m = Number(rawDaily.day.slice(5, 7));
+    const d = Number(rawDaily.day.slice(8, 10));
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    if (dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d) {
+      day = rawDaily.day;
+    }
+  }
+  if (!rawUsed && !day && !rawClaimed) return null;
+
+  const readCounts = (src, caps) => {
+    const out = {};
+    if (!isObj(src)) return out;
+    for (const k of Object.keys(caps)) {
+      if (!own(src, k)) continue;
+      const v = src[k];
+      if (typeof v === "number" && Number.isSafeInteger(v) && v >= 1) {
+        out[k] = Math.min(v, caps[k]);
+      }
+    }
+    return out;
+  };
+
+  const used = readCounts(rawUsed, NOEL_V5_DB_CAPS);
+  const daily = day
+    ? { day, used: readCounts(own(rawDaily, "used") ? rawDaily.used : null, NOEL_V5_DAILY_CAPS) }
+    : { day: null, used: {} };
+  const claimed = {};
+  if (rawClaimed) {
+    for (const tierKey of ["1", "2", "3"]) {
+      if (own(rawClaimed, tierKey) && rawClaimed[tierKey] === true) claimed[tierKey] = true;
+    }
+  }
+  return { used, daily, claimed };
+}
+
 function normalizeYearEntry(entry, kind) {
   if (!entry || typeof entry !== "object") {
     return { specialUsed: 0, claimed: {} };
@@ -511,6 +675,10 @@ function normalizeYearEntry(entry, kind) {
       if (count > 0) usedByItem[k] = count;
     }
     if (Object.keys(usedByItem).length > 0) out.usedByItem = usedByItem;
+  }
+  if (kind === "noel" && !Array.isArray(entry) && own(entry, "ver5")) {
+    const ver5 = normalizeVer5Entry(entry.ver5);
+    if (ver5) out.ver5 = ver5;
   }
   return out;
 }
@@ -578,6 +746,12 @@ function che(h, recipeId, now) {
     return { ok: false, msg: "Công thức không tồn tại" };
   }
   const rec = RECIPES[recipeId];
+  if (rec.kind === "noel") {
+    const noelV5 = !!(cf().noelVer5 && cf().noelVer5.bat === true);
+    if ((noelV5 && rec.ver !== 5) || (!noelV5 && rec.ver !== 4)) {
+      return { ok: false, msg: "Công thức không tồn tại" };
+    }
+  }
   const auth = checkHero(h, rec.kind, now);
   if (!auth.ok) return auth;
 
@@ -607,7 +781,149 @@ function che(h, recipeId, now) {
   };
 }
 
+function dungNoelVer5DacBiet(h, itemKey, now, randomFn) {
+  if (!(cf().noelVer5 && cf().noelVer5.bat === true)) {
+    return { ok: false, msg: "Sự kiện hiện không hoạt động" };
+  }
+  const auth = checkHero(h, "noel", now);
+  if (!auth.ok) return auth;
+
+  if (getCount(h, itemKey, now) < 1) {
+    return { ok: false, msg: `Không đủ ${itemKey}` };
+  }
+
+  const spec = THUONG_NOEL_V5[itemKey];
+  const yearKey = String(vnParts(now).year);
+  const curYear = readKindYearState(h, "noel", yearKey);
+  const usedCount =
+    curYear.ver5 && curYear.ver5.used && own(curYear.ver5.used, itemKey)
+      ? curYear.ver5.used[itemKey]
+      : 0;
+  if (usedCount >= spec.cap) {
+    return { ok: false, msg: `Đã đạt giới hạn sử dụng ${itemKey} (${usedCount}/${spec.cap})` };
+  }
+
+  let roll;
+  if (randomFn === undefined) {
+    roll = randomInt(1, 10000001);
+  } else {
+    if (typeof randomFn !== "function") {
+      return { ok: false, msg: "Nguồn ngẫu nhiên không hợp lệ" };
+    }
+    const r = randomFn();
+    if (typeof r !== "number" || !Number.isFinite(r) || r < 0 || r >= 1) {
+      return { ok: false, msg: "Nguồn ngẫu nhiên không hợp lệ" };
+    }
+    roll = Math.min(10000000, Math.floor(r * 10000000) + 1);
+  }
+
+  const reward = chonThuongNoel(spec.pool, roll);
+  const removeItems = [{ k: itemKey, n: 1 }];
+  const addItems = reward
+    ? [
+        own(reward, "hetThang") && reward.hetThang === true
+          ? { k: reward.k, n: reward.n, hetThang: true }
+          : { k: reward.k, n: reward.n },
+      ]
+    : [];
+  const cap = checkBagCapacity(h, addItems, removeItems);
+  if (!cap.ok) return cap;
+
+  const nextEventState = cloneEventState(h);
+  const kindYear = normalizeYearEntry(nextEventState.noel[yearKey], "noel");
+  const nextVer5 = kindYear.ver5 || { used: {}, daily: { day: null, used: {} }, claimed: {} };
+  nextVer5.used[itemKey] = usedCount + 1;
+  kindYear.ver5 = nextVer5;
+  nextEventState.noel[yearKey] = kindYear;
+
+  return {
+    ok: true,
+    kind: "noel",
+    itemKey,
+    tier: "special",
+    special: true,
+    ver5: true,
+    consume: removeItems,
+    award: addItems,
+    goldDelta: 0,
+    expDelta: spec.exp,
+    nextEventState,
+  };
+}
+
+const NOEL_V5_THUONG_TICKS = {
+  noelV5NguoiTuyet: 6480,
+  noelV5NguoiTuyetXanh: 12960,
+  noelV5NguoiTuyetDo: 19440,
+};
+
+function dungNoelVer5Thuong(h, itemKey, now) {
+  if (!(cf().noelVer5 && cf().noelVer5.bat === true)) {
+    return { ok: false, msg: "Sự kiện hiện không hoạt động" };
+  }
+  if (typeof itemKey !== "string" || !own(NOEL_V5_THUONG_TICKS, itemKey)) {
+    return { ok: false, msg: "Vật phẩm sự kiện không hợp lệ" };
+  }
+  if (!h || typeof h !== "object" || Array.isArray(h)) {
+    return { ok: false, msg: "Thiếu dữ liệu nhân vật" };
+  }
+  const ts = normalizeNow(now);
+  if (!Number.isFinite(ts)) {
+    return { ok: false, msg: "Thời gian không hợp lệ" };
+  }
+  if (!dang("noel", ts)) {
+    return { ok: false, msg: "Sự kiện hiện không hoạt động" };
+  }
+  if (getCount(h, itemKey, ts) < 1) {
+    return { ok: false, msg: `Không đủ ${itemKey}` };
+  }
+
+  const vn = vnParts(ts);
+  const yearKey = String(vn.year);
+  const dayKey = `${yearKey}-${String(vn.month).padStart(2, "0")}-${String(vn.day).padStart(2, "0")}`;
+  const curYear = readKindYearState(h, "noel", yearKey);
+  const curDaily = curYear.ver5 && curYear.ver5.daily ? curYear.ver5.daily : null;
+  const sameDay = !!(curDaily && curDaily.day === dayKey);
+  const usedCount =
+    sameDay && curDaily.used && own(curDaily.used, itemKey)
+      ? curDaily.used[itemKey]
+      : 0;
+  const dailyCap = NOEL_V5_DAILY_CAPS[itemKey];
+  if (usedCount >= dailyCap) {
+    return { ok: false, msg: `Đã đạt giới hạn sử dụng ${itemKey} hôm nay (${usedCount}/${dailyCap})` };
+  }
+
+  const nextEventState = cloneEventState(h);
+  const kindYear = normalizeYearEntry(nextEventState.noel[yearKey], "noel");
+  const nextVer5 = kindYear.ver5 || { used: {}, daily: { day: null, used: {} }, claimed: {} };
+  const nextDailyUsed = sameDay && nextVer5.daily && nextVer5.daily.used ? { ...nextVer5.daily.used } : {};
+  nextDailyUsed[itemKey] = usedCount + 1;
+  nextVer5.daily = { day: dayKey, used: nextDailyUsed };
+  kindYear.ver5 = nextVer5;
+  nextEventState.noel[yearKey] = kindYear;
+
+  return {
+    ok: true,
+    kind: "noel",
+    itemKey,
+    ver5: true,
+    special: false,
+    consume: [{ k: itemKey, n: 1 }],
+    award: [],
+    goldDelta: 0,
+    expDelta: 0,
+    buff440Ticks: NOEL_V5_THUONG_TICKS[itemKey],
+    nextEventState,
+  };
+}
+
 function dung(h, itemKey, now, randomFn) {
+  if (typeof itemKey === "string" && own(THUONG_NOEL_V5, itemKey)) {
+    return dungNoelVer5DacBiet(h, itemKey, now, randomFn);
+  }
+  if (typeof itemKey === "string" && own(NOEL_V5_THUONG_TICKS, itemKey)) {
+    return dungNoelVer5Thuong(h, itemKey, now);
+  }
   if (typeof itemKey !== "string" || !own(ITEM_USE, itemKey)) {
     return { ok: false, msg: "Vật phẩm sự kiện không hợp lệ" };
   }
@@ -671,19 +987,80 @@ function moc(h, kind, tier, now, randomFn) {
   if (typeof kind !== "string" || !own(KIND_MONTH, kind)) {
     return { ok: false, msg: "Sự kiện không hợp lệ" };
   }
+  const noelV5 = kind === "noel" && !!(cf().noelVer5 && cf().noelVer5.bat === true);
+  const table = noelV5 ? MOC_NOEL_V5 : MILESTONES;
   const tierValid =
     (typeof tier === "number" && Number.isInteger(tier)) ||
     (typeof tier === "string" && /^\d+$/.test(tier));
   const tierKey = tierValid ? String(tier) : "";
-  if (!tierValid || !own(MILESTONES, tierKey)) {
+  if (!tierValid || !own(table, tierKey)) {
     return { ok: false, msg: "Mốc thưởng không hợp lệ" };
   }
-  const m = MILESTONES[tierKey];
+  const m = table[tierKey];
   const auth = checkHero(h, kind, now);
   if (!auth.ok) return auth;
 
   const yearKey = String(vnParts(now).year);
   const st = readKindYearState(h, kind, yearKey);
+  if (noelV5) {
+    const v5Claimed = st.ver5 && st.ver5.claimed ? st.ver5.claimed : null;
+    if (v5Claimed && own(v5Claimed, tierKey) && v5Claimed[tierKey] === true) {
+      return { ok: false, msg: "Đã nhận mốc thưởng này" };
+    }
+    const redUsed =
+      st.ver5 && st.ver5.used && own(st.ver5.used, "noelV5NguoiTuyetDoDB")
+        ? st.ver5.used.noelV5NguoiTuyetDoDB
+        : 0;
+    if (redUsed < m.threshold) {
+      return { ok: false, msg: `Chưa đạt mốc ${m.threshold} (hiện tại ${redUsed})` };
+    }
+
+    let roll;
+    if (randomFn === undefined) {
+      roll = randomInt(1, 10000001);
+    } else {
+      if (typeof randomFn !== "function") {
+        return { ok: false, msg: "Nguồn ngẫu nhiên không hợp lệ" };
+      }
+      const r = randomFn();
+      if (typeof r !== "number" || !Number.isFinite(r) || r < 0 || r >= 1) {
+        return { ok: false, msg: "Nguồn ngẫu nhiên không hợp lệ" };
+      }
+      roll = Math.min(10000000, Math.floor(r * 10000000) + 1);
+    }
+
+    const reward = chonThuongNoel(m.pool, roll);
+    const addItems = reward
+      ? [
+          own(reward, "nExpiredTime") && reward.nExpiredTime !== undefined
+            ? { k: reward.k, n: reward.n, nExpiredTime: reward.nExpiredTime }
+            : { k: reward.k, n: reward.n },
+        ]
+      : [];
+    const cap = checkBagCapacity(h, addItems, []);
+    if (!cap.ok) return cap;
+
+    const nextEventState = cloneEventState(h);
+    const nextKindYear = normalizeYearEntry(nextEventState[kind][yearKey], kind);
+    const nextVer5 = nextKindYear.ver5 || { used: {}, daily: { day: null, used: {} }, claimed: {} };
+    nextVer5.claimed[tierKey] = true;
+    nextKindYear.ver5 = nextVer5;
+    nextEventState[kind][yearKey] = nextKindYear;
+
+    return {
+      ok: true,
+      kind,
+      ver5: true,
+      tier: Number(tierKey),
+      threshold: m.threshold,
+      consume: [],
+      award: addItems,
+      goldDelta: m.gold,
+      expDelta: m.exp,
+      nextEventState,
+    };
+  }
+
   if (st.claimed[tierKey]) {
     return { ok: false, msg: "Đã nhận mốc thưởng này" };
   }
@@ -749,15 +1126,23 @@ function tomTat(h, now) {
   const tetSt = readKindYearState(h, "tet", vn.year);
   const rawRate = C.drop ? Number(C.drop.tiLe) : 0;
   const safeRate = Number.isFinite(rawRate) && rawRate >= 0 && rawRate <= 1 ? rawRate : 0;
+  const noel = C.noelVer5?.bat === true
+    ? {
+        active: dang("noel", validTs),
+        ver5: true,
+        specialUsed: noelSt.ver5?.used?.noelV5NguoiTuyetDoDB ?? 0,
+        claimed: { ...(noelSt.ver5?.claimed ?? {}) },
+      }
+    : {
+        active: dang("noel", validTs),
+        specialUsed: noelSt.specialUsed,
+        claimed: { ...noelSt.claimed },
+      };
   return {
     bat: !!C.bat,
     month: activeMonth(validTs),
     vn,
-    noel: {
-      active: dang("noel", validTs),
-      specialUsed: noelSt.specialUsed,
-      claimed: { ...noelSt.claimed },
-    },
+    noel,
     tet: {
       active: dang("tet", validTs),
       specialUsed: tetSt.specialUsed,
