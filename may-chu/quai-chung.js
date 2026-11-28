@@ -39,6 +39,11 @@ const BOT_SKILLS = [
   ["shaolin", 19], ["tianwang", 32], ["tangmen", 249], ["wudu", 71], ["emei", 88],
   ["cuiyan", 108], ["gaibang", 128], ["tianren", 148], ["wudang", 165], ["kunlun", 182],
 ];
+// ponytail: curated 1-per-faction book-90 skills at lvl>=90; widen to books[90] catalog scan when bots mix multiple high skills
+const BOT_SKILLS_90 = {
+  shaolin: 321, tianwang: 322, tangmen: 339, wudu: 353, emei: 328,
+  cuiyan: 336, gaibang: 357, tianren: 362, wudang: 365, kunlun: 375,
+};
 // ponytail: vetted 1-per-faction native self-buff IDs; widen to catalog buff scan when bots manage multi-buffs/auras
 const BOT_BUFFS = {
   shaolin: 273, tianwang: 42, cuiyan: 109, gaibang: 130, tianren: 150, wudang: 157, kunlun: 173,
@@ -93,9 +98,23 @@ function botRollProfile(z, cat, rng = Math.random, curated = BOT_SKILLS, exclude
   const facByKey = new Map(cat.factions.map((f) => [f && f.key, f]));
   const cands = [];
   for (const [key, id] of curated) {
-    const f = facByKey.get(key), sk = cat.skills[id], vc = cat.vcSk[id];
+    const f = facByKey.get(key);
+    if (!f || !Array.isArray(f.skills)) continue;
+    const hiId = lvl >= 90 && Object.hasOwn(BOT_SKILLS_90, key) ? BOT_SKILLS_90[key] : null;
+    const hiSk = hiId != null ? cat.skills[hiId] : null, hiVc = hiId != null ? cat.vcSk[hiId] : null;
+    const hiReq = hiSk && typeof hiSk.req !== "boolean" ? Number(hiSk.req) : Number.NaN;
+    const hiMax = hiSk && typeof hiSk.max !== "boolean" ? Number(hiSk.max) : Number.NaN;
+    if (
+      hiId != null && Array.isArray(f.books?.[90]) && f.books[90].includes(hiId) &&
+      f.skills.includes(hiId) && hiSk && hiVc &&
+      Number.isFinite(hiReq) && hiReq > 0 && hiReq <= lvl && Number.isFinite(hiMax) && hiMax >= 20
+    ) {
+      cands.push({ lvl, fac: f.key, facName: f.n || f.key, skillId: hiId, skillLv: 20, ...botOutfitFor(f.key) });
+      continue;
+    }
+    const sk = cat.skills[id], vc = cat.vcSk[id];
     const req = Math.max(1, Number(sk && sk.req) || 1);
-    if (!f || !Array.isArray(f.skills) || !f.skills.includes(id) || !sk || !vc || req > lvl) continue;
+    if (!f.skills.includes(id) || !sk || !vc || req > lvl) continue;
     const maxLv = Math.max(1, Number(sk.max) || 20);
     cands.push({ lvl, fac: f.key, facName: f.n || f.key, skillId: id, skillLv: Math.max(1, Math.min(maxLv, lvl - req + 1)), ...botOutfitFor(f.key) });
   }

@@ -211,6 +211,86 @@ describe("bot-luyen-cong profile & cast metadata", () => {
     assert.deepEqual({ sex: picked.sex, look: picked.look }, CURATED_OUTFITS.wudu);
   });
 
+  it("selects rank-20 book-90 skills across all factions only when rolled lvl>=90 and catalog is valid, else falls back cleanly", () => {
+    const { _bot } = loadQuaiChungMocked();
+    const BOOK_90 = {
+      shaolin: 321, tianwang: 322, tangmen: 339, wudu: 353, emei: 328,
+      cuiyan: 336, gaibang: 357, tianren: 362, wudang: 365, kunlun: 375,
+    };
+    const makeCat90 = (mutate = null) => {
+      const cat = makeCatalog({ req: 75, max: 20 });
+      for (const f of cat.factions) {
+        const hiId = BOOK_90[f.key];
+        f.books = { 90: [hiId] };
+        f.skills.push(hiId);
+        cat.skills[hiId] = { req: 80, max: 20, target: { enemy: 1 } };
+        cat.vcSk[hiId] = { mis: hiId + 100 };
+      }
+      if (mutate) mutate(cat);
+      return cat;
+    };
+    const cat = makeCat90();
+    const seqRng = (vals) => { let idx = 0; return () => vals[idx++]; };
+
+    for (let i = 0; i < CURATED.length; i++) {
+      const [fac, baseId] = CURATED[i];
+      const hiId = BOOK_90[fac];
+      const r = (i + 0.01) / CURATED.length;
+
+      const p89 = _bot.botRollProfile({ lo: 89, hi: 89 }, cat, () => r);
+      assert.equal(p89.lvl, 89);
+      assert.equal(p89.fac, fac);
+      assert.equal(p89.skillId, baseId);
+      assert.equal(p89.skillLv, 15);
+
+      const p90 = _bot.botRollProfile({ lo: 90, hi: 90 }, cat, () => r);
+      assert.equal(p90.lvl, 90);
+      assert.equal(p90.fac, fac);
+      assert.equal(p90.skillId, hiId);
+      assert.equal(p90.skillLv, 20);
+
+      const p100 = _bot.botRollProfile({ lo: 100, hi: 100 }, cat, () => r);
+      assert.equal(p100.lvl, 100);
+      assert.equal(p100.fac, fac);
+      assert.equal(p100.skillId, hiId);
+      assert.equal(p100.skillLv, 20);
+    }
+
+    // Cutoff follows rolled lvl, not map z.hi
+    const zMixed = { lo: 80, hi: 100 };
+    const pMixed89 = _bot.botRollProfile(zMixed, cat, seqRng([9.5 / 21, 0]));
+    assert.equal(pMixed89.lvl, 89);
+    assert.equal(pMixed89.skillId, 19);
+    assert.equal(pMixed89.skillLv, 15);
+    const pMixed90 = _bot.botRollProfile(zMixed, cat, seqRng([10.5 / 21, 0]));
+    assert.equal(pMixed90.lvl, 90);
+    assert.equal(pMixed90.skillId, 321);
+    assert.equal(pMixed90.skillLv, 20);
+
+    // Invalid higher catalog entries for shaolin fall back to shaolin baseline (19 at lv 16)
+    const invalidMutations = [
+      (c) => { delete c.factions[0].books; },
+      (c) => { c.factions[0].books[90] = []; },
+      (c) => { c.factions[0].skills = [19]; },
+      (c) => { delete c.skills[321]; },
+      (c) => { delete c.vcSk[321]; },
+      (c) => { c.skills[321].req = 91; },
+      (c) => { c.skills[321].req = 0; },
+      (c) => { delete c.skills[321].req; },
+      (c) => { c.skills[321].max = 19; },
+      (c) => { delete c.skills[321].max; },
+    ];
+    for (const mut of invalidMutations) {
+      const pFallback = _bot.botRollProfile({ lo: 90, hi: 90 }, makeCat90(mut), () => 0);
+      assert.equal(pFallback.fac, "shaolin");
+      assert.equal(pFallback.skillId, 19);
+      assert.equal(pFallback.skillLv, 16);
+    }
+
+    // Missing catalog at lvl>=90 falls back safely to default outfit only
+    assert.deepEqual(_bot.botRollProfile({ lo: 90, hi: 100 }, null, () => 0.5), { lvl: 95, ...DEFAULT_OUTFIT });
+  });
+
   it("lazy-loads asset catalogs once and falls back cleanly when assets are missing", () => {
     const qcMissing = loadQuaiChungMocked();
     assert.equal(qcMissing._bot.botCatalogs(), null);
