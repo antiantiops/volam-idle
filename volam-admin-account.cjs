@@ -35,6 +35,25 @@ const MAX_XU_TOKENS = 1024;
 const DN_SLOT_SENTINEL = -1;
 const DN_EXPECTED_KS = ['hk:148', 'hk:149', 'hk:150', 'hk:151', 'hk:152', 'hk:153'];
 const DN_SET_CHOICE = 'set:dinhNghiep';
+const HK_BUNDLE_GROUP_LABEL = 'Bộ Hoàng Kim (nhận trọn bộ)';
+const HK_BUNDLE_SETS = Object.freeze([
+  Object.freeze({
+    choice: 'set:anBang',
+    label: 'Bộ An Bang (4 món)',
+    ks: Object.freeze(['hk:217', 'hk:218', 'hk:219', 'hk:220']),
+  }),
+  Object.freeze({
+    choice: 'set:dinhQuoc',
+    label: 'Bộ Định Quốc (5 món)',
+    ks: Object.freeze(['hk:399', 'hk:400', 'hk:401', 'hk:402', 'hk:403']),
+  }),
+  Object.freeze({
+    choice: 'set:docCoCauBai',
+    label: 'Độc Cô Cầu Bại (2 món)',
+    ks: Object.freeze(['hk:4135', 'hk:4136']),
+  }),
+]);
+const HK_BUNDLE_BY_CHOICE = new Map(HK_BUNDLE_SETS.map((b) => [b.choice, b]));
 const HK_KEY_RE = /^hk:\d+$/;
 const USERNAME_RE = /^[a-z0-9_]{3,20}$/;
 const INT_RE = /^\d+$/;
@@ -453,6 +472,22 @@ function buildDinhNghiepMon(hkData) {
   return mon;
 }
 
+function buildBundleHoangKimMon(hkData, bundle) {
+  if (!bundle || !Array.isArray(bundle.ks) || bundle.ks.length === 0) return { error: 'Bộ trang bị Hoàng Kim không hợp lệ.' };
+  const items = readHoangKimItems(hkData);
+  if (!items) return { unavailable: true };
+  const byKey = new Map(items.map((m) => [m.k, m]));
+  const mon = [];
+  const missing = [];
+  for (const k of bundle.ks) {
+    const found = byKey.get(k);
+    if (!found) missing.push(k);
+    else mon.push({ k: found.k, he: found.s, dong: 0 });
+  }
+  if (missing.length > 0) return { missing };
+  return { mon };
+}
+
 function buildSingleHoangKimMon(hkData, itemKey) {
   if (typeof itemKey !== 'string' || !HK_KEY_RE.test(itemKey)) return { error: 'Mã trang bị Hoàng Kim không hợp lệ.' };
   const items = readHoangKimItems(hkData);
@@ -603,6 +638,12 @@ function renderHoangKimPanel({ adminTen, ownChars, dnToken, selectedDnSlot, hkOp
         })
         .join('');
       const activeChoice = selectedHkChoice || DN_SET_CHOICE;
+      const bundleHkOptions = HK_BUNDLE_SETS
+        .map((bundle) => {
+          const sel = bundle.choice === activeChoice ? ' selected' : '';
+          return `<option value="${escapeHtml(bundle.choice)}"${sel}>${escapeHtml(bundle.label)}</option>`;
+        })
+        .join('');
       const singleHkOptions = Array.isArray(hkOptions)
         ? hkOptions
             .map((item) => {
@@ -612,15 +653,16 @@ function renderHoangKimPanel({ adminTen, ownChars, dnToken, selectedDnSlot, hkOp
             .join('')
         : '';
       const setSel = activeChoice === DN_SET_CHOICE ? ' selected' : '';
+      const bundleSelectGroup = `<optgroup label="${escapeHtml(HK_BUNDLE_GROUP_LABEL)}">${bundleHkOptions}</optgroup>`;
       const hkSelectGroup = singleHkOptions
         ? `<optgroup label="Trang bị Hoàng Kim (1 món)">${singleHkOptions}</optgroup>`
         : '';
       dnSectionBody =
-        '        <p class="dn-note">Cấp trọn bộ Định Nghiệp (6 món) hoặc 1 trang bị Hoàng Kim từ danh mục máy chủ (không khóa) thẳng vào túi đồ nhân vật của chính tài khoản quản trị đang đăng nhập; hãy đảm bảo túi đồ còn đủ chỗ trống.</p>\n' +
+        '        <p class="dn-note">Cấp trọn bộ Định Nghiệp (6 món), trọn bộ Hoàng Kim (1 lượt cả bộ) hoặc 1 trang bị Hoàng Kim từ danh mục máy chủ (không khóa) thẳng vào túi đồ nhân vật của chính tài khoản quản trị đang đăng nhập; hãy đảm bảo túi đồ còn đủ chỗ trống cho toàn bộ số món.</p>\n' +
         `        <form class="form-stack" method="post" action="${ROUTE_PATH}?muc=hoang-kim" enctype="application/x-www-form-urlencoded">\n` +
         `          <input type="hidden" name="action" value="dinh-nghiep"><input type="hidden" name="dnToken" value="${escapeHtml(dnToken)}">\n` +
         `          <div class="field"><label for="dn-slot">Nhân vật của bạn (${escapeHtml(adminTen)})</label><select id="dn-slot" name="o" required><option value="">-- Chọn nhân vật --</option>${slotOptions}</select></div>\n` +
-        `          <div class="field"><label for="dn-item">Trang bị Hoàng Kim</label><select id="dn-item" name="hkChoice" required><option value="${DN_SET_CHOICE}"${setSel}>Bộ Định Nghiệp (6 món)</option>${hkSelectGroup}</select></div>\n` +
+        `          <div class="field"><label for="dn-item">Trang bị Hoàng Kim</label><select id="dn-item" name="hkChoice" required><option value="${DN_SET_CHOICE}"${setSel}>Bộ Định Nghiệp (6 món)</option>${bundleSelectGroup}${hkSelectGroup}</select></div>\n` +
         '          <div class="field"><label for="dn-mk2">Mã khóa 2 (6 chữ số)</label><input id="dn-mk2" name="mk2" type="password" inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" required autocomplete="off"></div>\n' +
         '          <button class="btn-gold" type="submit">Cấp trang bị Hoàng Kim</button>\n' +
         '        </form>';
@@ -637,7 +679,7 @@ function renderHoangKimPanel({ adminTen, ownChars, dnToken, selectedDnSlot, hkOp
     '      <section class="panel panel-dn" aria-labelledby="heading-dn">\n' +
     '        <div class="panel-head">\n' +
     '          <h2 id="heading-dn">Cấp Hoàng Kim</h2>\n' +
-    '          <p>Cấp bộ Định Nghiệp hoặc 1 trang bị Hoàng Kim cho nhân vật thuộc chính tài khoản quản trị đang đăng nhập.</p>\n' +
+    '          <p>Cấp bộ Định Nghiệp, trọn bộ Hoàng Kim (1 lượt) hoặc 1 trang bị Hoàng Kim cho nhân vật thuộc chính tài khoản quản trị đang đăng nhập (cần đủ chỗ trống túi đồ).</p>\n' +
     '        </div>\n' +
     `${dnSectionBody}\n` +
     '      </section>'
@@ -832,8 +874,9 @@ function handleAdminActionPost(req, res, params, { D, QT, API, BM, loadHoangKim,
     if (!ownSlot) {
       return sendHtml(res, 404, 'Không tìm thấy nhân vật', renderAdminPage({ statusText: 'Ô nhân vật được chọn không tồn tại trên tài khoản quản trị của bạn.', isError: true, ownData: own, selectedHkChoice: hkChoice }));
     }
-    const isSetChoice = hkChoice === DN_SET_CHOICE;
-    if (!isSetChoice && !HK_KEY_RE.test(hkChoice)) {
+    const isDnSetChoice = hkChoice === DN_SET_CHOICE;
+    const bundleChoice = HK_BUNDLE_BY_CHOICE.get(hkChoice) || null;
+    if (!isDnSetChoice && !bundleChoice && !HK_KEY_RE.test(hkChoice)) {
       return sendHtml(res, 400, 'Dữ liệu không hợp lệ', renderAdminPage({ statusText: 'Lựa chọn trang bị Hoàng Kim không hợp lệ.', isError: true, ownData: own, selectedDnSlot: String(o), selectedHkChoice: hkChoice }));
     }
     if (!peekXuToken(dnToken, { sessionHash, ten: dnKey, o: DN_SLOT_SENTINEL })) {
@@ -847,11 +890,20 @@ function handleAdminActionPost(req, res, params, { D, QT, API, BM, loadHoangKim,
     }
     let mon = null;
     let selectedItem = null;
-    if (isSetChoice) {
+    if (isDnSetChoice) {
       mon = buildDinhNghiepMon(hkData);
       if (!mon) {
         return sendHtml(res, 500, 'Thiếu dữ liệu trang bị', renderAdminPage({ statusText: 'Không thể nạp đủ 6 món bộ Định Nghiệp từ danh mục Hoàng Kim.', isError: true, ownData: own, selectedDnSlot: String(o), selectedHkChoice: hkChoice }));
       }
+    } else if (bundleChoice) {
+      const bundleRes = buildBundleHoangKimMon(hkData, bundleChoice);
+      if (bundleRes.unavailable) {
+        return sendHtml(res, 500, 'Thiếu dữ liệu trang bị', renderAdminPage({ statusText: 'Không thể nạp danh mục Hoàng Kim từ máy chủ.', isError: true, ownData: own, selectedDnSlot: String(o), selectedHkChoice: hkChoice }));
+      }
+      if (bundleRes.missing) {
+        return sendHtml(res, 500, 'Thiếu dữ liệu trang bị', renderAdminPage({ statusText: `Không thể nạp đủ ${bundleChoice.ks.length} món ${bundleChoice.label} từ danh mục Hoàng Kim (thiếu: ${bundleRes.missing.join(', ')}).`, isError: true, ownData: own, selectedDnSlot: String(o), selectedHkChoice: hkChoice }));
+      }
+      mon = bundleRes.mon;
     } else {
       const single = buildSingleHoangKimMon(hkData, hkChoice);
       if (single.unavailable) {
@@ -866,7 +918,9 @@ function handleAdminActionPost(req, res, params, { D, QT, API, BM, loadHoangKim,
     const trang = crypto.randomBytes(18).toString('base64url');
     const ip = (req.socket && req.socket.remoteAddress) || '';
     const qtBody = { ten: admin.ten, o, mon };
-    const failTitle = isSetChoice ? 'Không thể cấp bộ Định Nghiệp' : 'Không thể cấp trang bị Hoàng Kim';
+    const failTitle = isDnSetChoice
+      ? 'Không thể cấp bộ Định Nghiệp'
+      : (bundleChoice ? `Không thể cấp ${bundleChoice.label}` : 'Không thể cấp trang bị Hoàng Kim');
     try {
       BM.lam(admin, { viec: 'mo', mk: mk2 }, { trang, ip });
       const chanErr = BM.chan(admin, trang, '/api/quan-tri/qua', 'POST', qtBody);
@@ -877,18 +931,22 @@ function handleAdminActionPost(req, res, params, { D, QT, API, BM, loadHoangKim,
         return sendHtml(res, 409, 'Phiên thao tác đã hết hạn', renderAdminPage({ statusText: 'Mã xác nhận cấp trang bị Hoàng Kim đã hết hạn hoặc đã được sử dụng. Vui lòng thử lại.', isError: true, ownData: own, selectedDnSlot: String(o), selectedHkChoice: hkChoice }));
       }
       const result = QT.lam('qua', admin, qtBody, {});
+      const fallbackOkMsg = isDnSetChoice
+        ? `Đã cấp bộ Định Nghiệp (6 món) cho ${ownSlot.name} (Ô ${o + 1}).`
+        : (bundleChoice
+          ? `Đã cấp ${bundleChoice.label} cho ${ownSlot.name} (Ô ${o + 1}).`
+          : `Đã cấp ${selectedItem.name} (${selectedItem.k}) cho ${ownSlot.name} (Ô ${o + 1}).`);
       let okMsg = result && typeof result.msg === 'string' && result.msg.trim()
         ? result.msg.trim()
-        : (isSetChoice
-          ? `Đã cấp bộ Định Nghiệp (6 món) cho ${ownSlot.name} (Ô ${o + 1}).`
-          : `Đã cấp ${selectedItem.name} (${selectedItem.k}) cho ${ownSlot.name} (Ô ${o + 1}).`);
-      if (Array.isArray(result && result.ds) && result.ds.length > 0 && !okMsg.includes(isSetChoice ? 'Định Nghiệp' : selectedItem.name)) {
+        : fallbackOkMsg;
+      const okLabelHint = isDnSetChoice ? 'Định Nghiệp' : (bundleChoice ? bundleChoice.label : selectedItem.name);
+      if (Array.isArray(result && result.ds) && result.ds.length > 0 && !okMsg.includes(okLabelHint)) {
         okMsg = `${okMsg} (${result.ds.join(', ')})`;
       }
       return sendHtml(
         res,
         200,
-        isSetChoice ? 'Cấp bộ Định Nghiệp thành công' : 'Cấp trang bị Hoàng Kim thành công',
+        isDnSetChoice ? 'Cấp bộ Định Nghiệp thành công' : (bundleChoice ? `Cấp ${bundleChoice.label} thành công` : 'Cấp trang bị Hoàng Kim thành công'),
         renderAdminPage({ statusText: okMsg, isError: false, selectedDnSlot: String(o), selectedHkChoice: hkChoice })
       );
     } catch (err) {
@@ -2051,8 +2109,11 @@ if (require.main === module) {
         assert.match(dnGet.body, /id="dn-slot" name="o"/);
         assert.match(dnGet.body, /id="dn-item" name="hkChoice"/);
         assert.match(dnGet.body, /<option value="set:dinhNghiep" selected>Bộ Định Nghiệp \(6 món\)<\/option>/);
-        assert.match(dnGet.body, /<option value="hk:217">An Bang &lt;Thử&gt; \(hk:217\)<\/option>/);
-        assert.match(dnGet.body, /<option value="hk:399">Định Quốc Thanh Sa \(hk:399\)<\/option>/);
+        assert.match(dnGet.body, /<optgroup label="Bộ Hoàng Kim \(nhận trọn bộ\)"><option value="set:anBang">Bộ An Bang \(4 món\)<\/option><option value="set:dinhQuoc">Bộ Định Quốc \(5 món\)<\/option><option value="set:docCoCauBai">Độc Cô Cầu Bại \(2 món\)<\/option><\/optgroup>/);
+        assert.match(dnGet.body, /<optgroup label="Trang bị Hoàng Kim \(1 món\)"><option value="hk:148">.*<option value="hk:217">An Bang &lt;Thử&gt; \(hk:217\)<\/option><option value="hk:399">Định Quốc Thanh Sa \(hk:399\)<\/option><\/optgroup>/);
+        assert.doesNotMatch(dnGet.body, /set:all|all17|17 món/i);
+        assert.match(dnGet.body, /1 lượt/);
+        assert.match(dnGet.body, /đủ chỗ trống/);
         assert.match(dnGet.body, /<option value="0">Ô 1: &lt;GMMain&gt; \(Cấp 200\)<\/option>/);
         assert.match(dnGet.body, /<option value="2">Ô 3: GMAlt \(Cấp 10\)<\/option>/);
         assert.doesNotMatch(dnGet.body, /TieuLong|MoiTao|<section class="panel[^"]*(panel-create|panel-cap|panel-xu)|id="lookup-ten"/);
@@ -2254,6 +2315,160 @@ if (require.main === module) {
         assert.match(rOkSingleHk.body, /<option value="hk:217" selected>/);
         assert.match(rOkSingleHk.body, /<a class="nav-link" href="\/admin\/tao-tai-khoan\?muc=hoang-kim" aria-current="page">Cấp Hoàng Kim<\/a>/);
         assert.doesNotMatch(rOkSingleHk.body, /123456/);
+
+        // Hoàng Kim full-set bundles: incomplete catalog rejects without partial grant or token consume; complete catalog grants exact batch IDs with canonical he/dong=0 via single BM/QT call
+        const prevHkLoader = hkLoaderImpl;
+        const prevQtImpl = qtImpl;
+        try {
+          const dnTokenBundle = extractDnToken(rOkSingleHk.body);
+          bmLamCalls = []; bmChanCalls = []; bmKhoaCalls = []; qtCalls = []; callOrder.length = 0;
+
+          // Unallowlisted set (no all-17) rejected before BM/QT without consuming token
+          const rDisallowedSet = await request({
+            method: 'POST',
+            headers: levelHeaders,
+            body: new URLSearchParams({ action: 'dinh-nghiep', o: '0', mk2: '123456', dnToken: dnTokenBundle, hkChoice: 'set:all17' }).toString(),
+          });
+          assert.equal(rDisallowedSet.status, 400);
+          assert.equal(bmLamCalls.length, 0);
+          assert.equal(bmChanCalls.length, 0);
+          assert.equal(qtCalls.length, 0);
+
+          // Incomplete catalog (fakeHoangKim lacks hk:218..220) rejects without consuming token or partial grant
+          const rIncompleteBundle = await request({
+            method: 'POST',
+            headers: levelHeaders,
+            body: new URLSearchParams({ action: 'dinh-nghiep', o: '0', mk2: '123456', dnToken: dnTokenBundle, hkChoice: 'set:anBang' }).toString(),
+          });
+          assert.equal(rIncompleteBundle.status, 500);
+          assert.equal(bmLamCalls.length, 0);
+          assert.equal(bmChanCalls.length, 0);
+          assert.equal(qtCalls.length, 0);
+          assert.match(rIncompleteBundle.body, /<option value="set:anBang" selected>Bộ An Bang \(4 món\)<\/option>/);
+
+          // Complete scoped catalog fixture (all 3 bundles with distinct canonical s values)
+          const bundleCatalog = {
+            items: [
+              ...fakeHoangKim.items,
+              { k: 'hk:218', n: 'An Bang Hạng Liên', s: 1 },
+              { k: 'hk:219', n: 'An Bang Giới Chỉ 1', s: 2 },
+              { k: 'hk:220', n: 'An Bang Giới Chỉ 2', s: 3 },
+              { k: 'hk:400', n: 'Định Quốc Hộ Uyển', s: 1 },
+              { k: 'hk:401', n: 'Định Quốc Yêu Đái', s: 2 },
+              { k: 'hk:402', n: 'Định Quốc Chiến Ngoa', s: 3 },
+              { k: 'hk:403', n: 'Định Quốc Giới Chỉ', s: 4 },
+              { k: 'hk:4135', n: 'Độc Cô Cầu Bại Kiếm', s: 2 },
+              { k: 'hk:4136', n: 'Độc Cô Cầu Bại Nhẫn', s: 4 },
+            ],
+          };
+          hkLoaderImpl = () => bundleCatalog;
+          qtImpl = (cmd, actor, payload, ctx) => {
+            callOrder.push('qt');
+            qtCalls.push({ cmd, actor, payload, ctx });
+            return { msg: '', ds: payload.mon.map((m) => m.k) };
+          };
+
+          // Bad Origin rejected before BM/QT and does not consume token
+          const rBadOriginBundle = await request({
+            method: 'POST',
+            headers: {
+              'x-volam-admin-proxy': validSecret,
+              'x-userinfo': validUserInfo,
+              origin: 'https://evil.example',
+              'content-type': 'application/x-www-form-urlencoded',
+            },
+            body: new URLSearchParams({ action: 'dinh-nghiep', o: '0', mk2: '123456', dnToken: dnTokenBundle, hkChoice: 'set:anBang' }).toString(),
+          });
+          assert.ok(rBadOriginBundle.status >= 400 && rBadOriginBundle.status < 500);
+          assert.equal(bmLamCalls.length, 0);
+          assert.equal(qtCalls.length, 0);
+
+          // Same unconsumed token grants Bộ An Bang (4 món) in one batch
+          const anBangBody = new URLSearchParams({ action: 'dinh-nghiep', o: '0', mk2: '123456', dnToken: dnTokenBundle, hkChoice: 'set:anBang' }).toString();
+          const rOkAnBang = await request({ method: 'POST', headers: levelHeaders, body: anBangBody });
+          assert.equal(rOkAnBang.status, 200);
+          const expectedAnBangMon = [
+            { k: 'hk:217', he: 4, dong: 0 },
+            { k: 'hk:218', he: 1, dong: 0 },
+            { k: 'hk:219', he: 2, dong: 0 },
+            { k: 'hk:220', he: 3, dong: 0 },
+          ];
+          assert.deepEqual(callOrder, ['lam', 'chan', 'qt']);
+          assert.deepEqual(bmChanCalls, [{
+            actor: { ten: 'admin_root', admin: true, batDoiMk: false, phien: 'dn-sess-1' },
+            trang: bmLamCalls[0].ctx.trang,
+            route: '/api/quan-tri/qua',
+            method: 'POST',
+            body: { ten: 'admin_root', o: 0, mon: expectedAnBangMon },
+          }]);
+          assert.deepEqual(qtCalls, [{
+            cmd: 'qua',
+            actor: { ten: 'admin_root', admin: true, batDoiMk: false, phien: 'dn-sess-1' },
+            payload: { ten: 'admin_root', o: 0, mon: expectedAnBangMon },
+            ctx: {},
+          }]);
+          assert.deepEqual(bmKhoaCalls, [{ tenAdmin: 'admin_root', trang: bmLamCalls[0].ctx.trang }]);
+          assert.match(rOkAnBang.body, /<option value="set:anBang" selected>Bộ An Bang \(4 món\)<\/option>/);
+          assert.doesNotMatch(rOkAnBang.body, /123456/);
+
+          // Replay rejected without mutation
+          const rReplayAnBang = await request({ method: 'POST', headers: levelHeaders, body: anBangBody });
+          assert.equal(rReplayAnBang.status, 409);
+          assert.equal(qtCalls.length, 1);
+
+          // Bộ Định Quốc (5 món) on slot 2
+          bmLamCalls = []; bmChanCalls = []; bmKhoaCalls = []; qtCalls = []; callOrder.length = 0;
+          const rOkDinhQuoc = await request({
+            method: 'POST',
+            headers: levelHeaders,
+            body: new URLSearchParams({ action: 'dinh-nghiep', o: '2', mk2: '123456', dnToken: extractDnToken(rOkAnBang.body), hkChoice: 'set:dinhQuoc' }).toString(),
+          });
+          assert.equal(rOkDinhQuoc.status, 200);
+          const expectedDinhQuocMon = [
+            { k: 'hk:399', he: 0, dong: 0 },
+            { k: 'hk:400', he: 1, dong: 0 },
+            { k: 'hk:401', he: 2, dong: 0 },
+            { k: 'hk:402', he: 3, dong: 0 },
+            { k: 'hk:403', he: 4, dong: 0 },
+          ];
+          assert.deepEqual(callOrder, ['lam', 'chan', 'qt']);
+          assert.equal(bmChanCalls.length, 1);
+          assert.equal(bmChanCalls[0].route, '/api/quan-tri/qua');
+          assert.deepEqual(qtCalls, [{
+            cmd: 'qua',
+            actor: { ten: 'admin_root', admin: true, batDoiMk: false, phien: 'dn-sess-1' },
+            payload: { ten: 'admin_root', o: 2, mon: expectedDinhQuocMon },
+            ctx: {},
+          }]);
+          assert.match(rOkDinhQuoc.body, /<option value="set:dinhQuoc" selected>Bộ Định Quốc \(5 món\)<\/option>/);
+          assert.match(rOkDinhQuoc.body, /<option value="2" selected>/);
+
+          // Độc Cô Cầu Bại (2 món)
+          bmLamCalls = []; bmChanCalls = []; bmKhoaCalls = []; qtCalls = []; callOrder.length = 0;
+          const rOkDocCo = await request({
+            method: 'POST',
+            headers: levelHeaders,
+            body: new URLSearchParams({ action: 'dinh-nghiep', o: '0', mk2: '123456', dnToken: extractDnToken(rOkDinhQuoc.body), hkChoice: 'set:docCoCauBai' }).toString(),
+          });
+          assert.equal(rOkDocCo.status, 200);
+          const expectedDocCoMon = [
+            { k: 'hk:4135', he: 2, dong: 0 },
+            { k: 'hk:4136', he: 4, dong: 0 },
+          ];
+          assert.deepEqual(callOrder, ['lam', 'chan', 'qt']);
+          assert.equal(bmChanCalls.length, 1);
+          assert.equal(bmChanCalls[0].route, '/api/quan-tri/qua');
+          assert.deepEqual(qtCalls, [{
+            cmd: 'qua',
+            actor: { ten: 'admin_root', admin: true, batDoiMk: false, phien: 'dn-sess-1' },
+            payload: { ten: 'admin_root', o: 0, mon: expectedDocCoMon },
+            ctx: {},
+          }]);
+          assert.match(rOkDocCo.body, /<option value="set:docCoCauBai" selected>Độc Cô Cầu Bại \(2 món\)<\/option>/);
+        } finally {
+          hkLoaderImpl = prevHkLoader;
+          qtImpl = prevQtImpl;
+        }
       }
 
       // 15. Legacy no-query POST for action=cap retains cap view even without ?muc=cap; action=tim without ?muc defaults to cap view
