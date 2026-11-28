@@ -43,6 +43,9 @@ const BOT_SKILLS = [
 const BOT_BUFFS = {
   shaolin: 273, tianwang: 42, cuiyan: 109, gaibang: 130, tianren: 150, wudang: 157, kunlun: 173,
 };
+// ponytail: expected passive speed IDs & single emei aura ID; widen to catalog scan when bots learn multi-passives/auras
+const BOT_PASSIVES = { tangmen: 48, wudu: 75 };
+const BOT_AURAS = { emei: 92 };
 // ponytail: curated faction cosmetic outfits [sex, armor, helm, weapon], mantle 1, no horse; widen to random gear table when bot equips dynamic loot
 const BOT_OUTFITS = {
   shaolin: { sex: "m", look: { armor: 24, helm: 3, weapon: 23, mantle: 1 } },
@@ -178,24 +181,25 @@ function botCastMs(spd = 0) {
   const frames = Math.max(1, Math.floor((18 * 100) / (100 + Math.max(-90, s))));
   return Math.ceil((frames * 1000) / 18);
 }
-function botBuffSpec(prev, cat) {
+const BOT_SPD_KEYS = (phys) => (phys ? ["attackspeed_v", "attackspeed_yan_v"] : ["castspeed_v", "castspeed_yan_v"]);
+function botTimedEffectSpec(prev, cat, table, wantAura) {
   if (!prev || !prev.fac || !cat || !Array.isArray(cat.factions) || !cat.skills || !cat.vcSk) return null;
-  const buffId = BOT_BUFFS[prev.fac];
-  if (!buffId) return null;
+  const effectId = table[prev.fac];
+  if (!effectId) return null;
   const lvl = Number(prev.lvl);
   if (!Number.isFinite(lvl) || lvl < 1) return null;
   const f = cat.factions.find((x) => x && x.key === prev.fac);
-  if (!f || !Array.isArray(f.skills) || !f.skills.includes(buffId)) return null;
-  const sk = cat.skills[buffId], vc = cat.vcSk[buffId];
+  if (!f || !Array.isArray(f.skills) || !f.skills.includes(effectId)) return null;
+  const sk = cat.skills[effectId], vc = cat.vcSk[effectId];
   const st = vc && vc.state;
   const hasState = typeof st === "number" ? st > 0 : typeof st === "string" && st.trim() !== "" && (!Number.isFinite(+st) || +st > 0);
-  if (!sk || !hasState) return null;
-  const req = Math.max(1, Number(sk.req) || 1);
-  if (req > lvl) return null;
+  if (!sk || (sk.id != null && sk.id !== effectId) || !hasState) return null;
+  const req = Math.max(1, Math.floor(Number(sk.req) || 1));
+  if (lvl < req) return null;
   if (!sk.target || !sk.target.self || sk.target.enemy) return null;
-  if (sk.eqt !== -2 || sk.aura) return null;
-  const maxLv = Math.max(1, Number(sk.max) || 20);
-  const skillLv = Math.max(1, Math.min(maxLv, lvl - req + 1));
+  if (sk.eqt !== -2 || Boolean(sk.aura) !== wantAura) return null;
+  const maxLv = Math.max(1, Math.floor(Number(sk.max) || 20));
+  const skillLv = Math.max(1, Math.min(maxLv, Math.floor(lvl) - req + 1));
   if (!sk.lv || typeof sk.lv !== "object") return null;
   let maxTicks = 0;
   for (const [k, a] of Object.entries(sk.lv)) {
@@ -205,7 +209,35 @@ function botBuffSpec(prev, cat) {
     if (typeof p2 === "number" && Number.isFinite(p2) && p2 > maxTicks) maxTicks = p2;
   }
   if (maxTicks < BOT_BUFF_TICK_MIN || maxTicks > BOT_BUFF_TICK_MAX) return null;
-  return { skillId: buffId, skillLv, durMs: Math.round((maxTicks * 1000) / 18) };
+  return { skillId: effectId, skillLv, durMs: Math.round((maxTicks * 1000) / 18) };
+}
+const botBuffSpec = (prev, cat) => botTimedEffectSpec(prev, cat, BOT_BUFFS, false);
+const botAuraSpec = (prev, cat) => botTimedEffectSpec(prev, cat, BOT_AURAS, true);
+function botPassiveSpeed(prev, cat, isPhys) {
+  if (!prev || !prev.fac || !cat || !Array.isArray(cat.factions) || !cat.skills) return 0;
+  const passiveId = BOT_PASSIVES[prev.fac];
+  if (!passiveId) return 0;
+  const lvl = Number(prev.lvl);
+  if (!Number.isFinite(lvl) || lvl < 1) return 0;
+  const f = cat.factions.find((x) => x && x.key === prev.fac);
+  if (!f || !Array.isArray(f.skills) || !f.skills.includes(passiveId)) return 0;
+  const sk = cat.skills[passiveId];
+  if (!sk || (sk.id != null && sk.id !== passiveId) || sk.aura || (sk.target && sk.target.enemy) || (sk.style != null && sk.style !== 3)) return 0;
+  const req = Math.max(1, Math.floor(Number(sk.req) || 1));
+  if (lvl < req) return 0;
+  const maxLv = Math.max(1, Math.floor(Number(sk.max) || 20));
+  const skillLv = Math.max(1, Math.min(maxLv, Math.floor(lvl) - req + 1));
+  const pLv = sk.lv;
+  if (!pLv || typeof pLv !== "object") return 0;
+  let spd = 0;
+  for (const k of BOT_SPD_KEYS(isPhys)) {
+    const a = Object.hasOwn(pLv, k) ? pLv[k] : null;
+    if (!Array.isArray(a) || !a.length) continue;
+    const row = a[Math.min(a.length, skillLv) - 1];
+    const amt = Array.isArray(row) ? row[0] : NaN, dur = Array.isArray(row) ? row[1] : NaN;
+    if (typeof amt === "number" && Number.isFinite(amt) && amt > 0 && dur === -1) spd += amt;
+  }
+  return spd;
 }
 function botBuildOpts(prevById, cat, t) {
   if (!prevById || !prevById.size || !cat || !cat.skills) return undefined;
@@ -213,17 +245,18 @@ function botBuildOpts(prevById, cat, t) {
   for (const [id, prev] of prevById) {
     const opt = {};
     const b = botBuffSpec(prev, cat);
+    const a = !b ? botAuraSpec(prev, cat) : null;
     const cur = prev && prev.buff;
     const s = prev && prev.skillId != null ? cat.skills[prev.skillId] : null;
     if (s && s.phys !== undefined) {
-      let spd = 0;
+      let spd = botPassiveSpeed(prev, cat, Boolean(s.phys));
       if (b && cur && cur.skillId === b.skillId && cur.skillLv === b.skillLv && Number.isFinite(t) && Number.isFinite(cur.at) && Number.isFinite(cur.until) && t >= cur.at && t < cur.until) {
         const bLv = cat.skills[b.skillId] && cat.skills[b.skillId].lv;
         if (bLv && typeof bLv === "object") {
-          for (const k of s.phys ? ["attackspeed_v", "attackspeed_yan_v"] : ["castspeed_v", "castspeed_yan_v"]) {
-            const a = Object.hasOwn(bLv, k) ? bLv[k] : null;
-            if (!Array.isArray(a) || !a.length) continue;
-            const row = a[Math.min(a.length, b.skillLv) - 1];
+          for (const k of BOT_SPD_KEYS(Boolean(s.phys))) {
+            const arr = Object.hasOwn(bLv, k) ? bLv[k] : null;
+            if (!Array.isArray(arr) || !arr.length) continue;
+            const row = arr[Math.min(arr.length, b.skillLv) - 1];
             const amt = Array.isArray(row) ? row[0] : NaN, ticks = Array.isArray(row) ? row[1] : NaN;
             if (typeof amt === "number" && Number.isFinite(amt) && amt > 0 && typeof ticks === "number" && Number.isFinite(ticks) && ticks > 0) {
               if (t < Math.min(cur.until, cur.at + Math.round((ticks * 1000) / 18))) spd += amt;
@@ -237,6 +270,11 @@ function botBuildOpts(prevById, cat, t) {
       const active = cur && cur.skillId === b.skillId && cur.skillLv === b.skillLv && Number.isFinite(cur.until);
       if (!active || (Number.isFinite(t) && cur.until - t <= BOT_BUFF_LEAD_MS)) {
         opt.buff = { skillId: b.skillId, skillLv: b.skillLv, castMs: BOT_BUFF_CAST_MS };
+      }
+    } else if (a) {
+      const active = cur && cur.skillId === a.skillId && cur.skillLv === a.skillLv && Number.isFinite(cur.at) && Number.isFinite(cur.until) && (!Number.isFinite(t) || (t >= cur.at && t < cur.until));
+      if (!active) {
+        opt.buff = { skillId: a.skillId, skillLv: a.skillLv, castMs: BOT_BUFF_CAST_MS };
       }
     }
     if (opt.castMs !== undefined || opt.buff !== undefined) opts.set(id, opt);
@@ -309,10 +347,15 @@ function botBuoc(P, M, t, opts) {
     const evBuff = buffById.get(raw.id);
     const reqBuff = botOpts && botOpts.get(raw.id) && botOpts.get(raw.id).buff;
     if (evBuff && reqBuff && evBuff.skillId === reqBuff.skillId && evBuff.skillLv === reqBuff.skillLv) {
-      const bSpec = botBuffSpec(prev, cat);
+      const bSpec = botBuffSpec(prev, cat) || botAuraSpec(prev, cat);
       if (bSpec && bSpec.skillId === evBuff.skillId && bSpec.skillLv === evBuff.skillLv) {
         buff = { skillId: bSpec.skillId, skillLv: bSpec.skillLv, at: t, until: t + bSpec.durMs };
         cast = { kind: "buff", skillId: bSpec.skillId, skillLv: bSpec.skillLv, n: raw.atkN, x: Math.round(raw.x), y: Math.round(raw.y), at: t };
+      }
+    } else if (buff && Number.isFinite(buff.at) && buff.at <= t) {
+      const aSpec = botAuraSpec(prev, cat);
+      if (aSpec && aSpec.skillId === buff.skillId && aSpec.skillLv === buff.skillLv && buff.until - t <= BOT_BUFF_LEAD_MS) {
+        buff = { skillId: aSpec.skillId, skillLv: aSpec.skillLv, at: buff.at, until: t + aSpec.durMs };
       }
     }
     const hitUid = strikeById.get(raw.id);
@@ -597,4 +640,4 @@ function nhanThuong(h, tk, key, admin) {
   return out.kn || out.nhan.length || out.roi.length || out.tin.length ? out : null;
 }
 
-module.exports = { bat, danh, nhanThuong, nvSat, BAI, _bot: { BOT_LO_MIN, BOT_SKILLS, BOT_BUFFS, BOT_OUTFITS, BOT_OUTFIT_DEFAULT, botDuoc, botMap, botCatalogs, botPickLevel, botRollProfile, botCastMs, botBuffSpec, botBuildOpts, botBuoc, botKhac } };
+module.exports = { bat, danh, nhanThuong, nvSat, BAI, _bot: { BOT_LO_MIN, BOT_SKILLS, BOT_BUFFS, BOT_PASSIVES, BOT_AURAS, BOT_OUTFITS, BOT_OUTFIT_DEFAULT, botDuoc, botMap, botCatalogs, botPickLevel, botRollProfile, botCastMs, botBuffSpec, botAuraSpec, botPassiveSpeed, botBuildOpts, botBuoc, botKhac } };

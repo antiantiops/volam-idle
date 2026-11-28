@@ -669,4 +669,146 @@ describe("bot-luyen-cong profile & cast metadata", () => {
     castCat.skills[273].lv.castspeed_yan_v = [["30", 180, 0]];
     assert.equal(qc._bot.botBuildOpts(mkPrev({ skillId: 273, skillLv: 20, at: 1000, until: 11000 }), castCat, 2000).get(1).castMs, 1000);
   });
+
+  it("wires tangmen/wudu permanent passive speed without buff/cast events and maintains emei aura silently", () => {
+    const qc = loadQuaiChungMocked();
+    const cat = makeCatalog({ req: 50, max: 20 });
+    const addFacSkill = (facKey, id) => cat.factions.find((f) => f.key === facKey).skills.push(id);
+    addFacSkill("tangmen", 48);
+    addFacSkill("wudu", 75);
+    addFacSkill("emei", 92);
+
+    cat.skills[249].phys = 1; // tangmen physical attack
+    cat.skills[48] = {
+      id: 48, req: 60, max: 20, style: 3, target: { self: 1 },
+      lv: { attackspeed_v: Array.from({ length: 20 }, (_, i) => [15 + i, -1, 0]) },
+    };
+
+    cat.skills[71].phys = 0; // wudu internal cast
+    cat.skills[75] = {
+      id: 75, req: 60, max: 20, style: 3, target: { self: 1 },
+      lv: {
+        attackspeed_yan_v: Array.from({ length: 20 }, () => [99, -1, 0]), // ignored for phys=0
+        castspeed_v: Array.from({ length: 20 }, () => [20, -1, 0]),
+        castspeed_yan_v: Array.from({ length: 20 }, () => [30, -1, 0]),
+      },
+    };
+
+    cat.skills[88].phys = 0; // emei internal cast
+    cat.skills[92] = {
+      id: 92, req: 50, max: 20, eqt: -2, aura: 1, target: { self: 1, ally: 1 },
+      lv: { lifemax_p: Array.from({ length: 20 }, () => [50, 144, 0]) }, // 8000ms
+    };
+    cat.vcSk[92] = { state: 41 };
+
+    // Edge checks for passive speed & aura validation
+    assert.equal(qc._bot.botPassiveSpeed({ fac: "tangmen", lvl: 59 }, cat, true), 0); // below req=60
+    assert.equal(qc._bot.botPassiveSpeed({ fac: "tangmen", lvl: 79 }, cat, true), 34); // skillLv=20 -> 15+19
+    assert.equal(qc._bot.botPassiveSpeed({ fac: "wudu", lvl: 80 }, cat, false), 50); // castspeed_v(20)+castspeed_yan_v(30)
+    const badCat = structuredClone(cat);
+    badCat.skills[48].lv.attackspeed_v[19] = [50, 180, 0]; // non-permanent row ignored
+    assert.equal(qc._bot.botPassiveSpeed({ fac: "tangmen", lvl: 79 }, badCat, true), 0);
+    badCat.skills[48].lv.attackspeed_v[19] = [-10, -1, 0];
+    assert.equal(qc._bot.botPassiveSpeed({ fac: "tangmen", lvl: 79 }, badCat, true), 0);
+    badCat.skills[92].target.enemy = 1;
+    assert.equal(qc._bot.botAuraSpec({ fac: "emei", lvl: 70 }, badCat), null);
+    badCat.skills[92].target.enemy = 0;
+    badCat.vcSk[92].state = 0;
+    assert.equal(qc._bot.botAuraSpec({ fac: "emei", lvl: 70 }, badCat), null);
+
+    // Spawn deterministic squad covering tangmen(2/10), wudu(3/10), emei(4/10) at lvl 80
+    // Place emei's reserved mob (uid=4 at anchor ~920,800) within 75px of spawn (around 920,1135 -> wait, pick mob within 75px of all spawns)
+    const seenOpts = [];
+    const seenEvents = [];
+    const inner = taoDoiLuyenCong();
+    const wrappedCtl = {
+      ghiDanh: inner.ghiDanh,
+      tick(t, nguoi, quai, map, botOpts) {
+        seenOpts.push(botOpts);
+        const ev = inner.tick(t, nguoi, quai, map, botOpts);
+        seenEvents.push(ev);
+        return ev;
+      },
+      trangThai: inner.trangThai,
+    };
+    const P = makeRoom(wrappedCtl);
+    const openMap = { walkable: () => true, clear: () => true };
+    const nguoi = new Map([["p1", { x: 1000, y: 1000 }]]);
+    P.q.set(1, { uid: 1, tpl: 1, lv: 75, he: 0, x: 1015, y: 1000, mau: 1000, mauMax: 1000, boss: 0, ta: 0, sat: 0, dmg: new Map() });
+    P.q.set(2, { uid: 2, tpl: 1, lv: 75, he: 0, x: 1200, y: 1000, mau: 10000, mauMax: 10000, boss: 0, ta: 0, sat: 0, dmg: new Map() });
+    P.q.set(3, { uid: 3, tpl: 1, lv: 75, he: 0, x: 920, y: 1200, mau: 10000, mauMax: 10000, boss: 0, ta: 0, sat: 0, dmg: new Map() });
+    P.q.set(4, { uid: 4, tpl: 1, lv: 75, he: 0, x: 920, y: 800, mau: 10000, mauMax: 10000, boss: 0, ta: 0, sat: 0, dmg: new Map() });
+
+    // Pick lvl=80 (r=1) and factions: slot 0 -> tangmen (idx 2/10), slot 1 -> wudu (idx 2/9), slot 2 -> emei (idx 2/8)
+    const rolls = [0.99, 0.25, 0.99, 0.25, 0.99, 0.25];
+    let ri = 0;
+    const step = (t) => qc._bot.botBuoc(P, new Map([["p1", {}]]), t, {
+      zone: { id: 319, lo: 70, hi: 80 },
+      getCatalogs: () => cat,
+      map: openMap,
+      nguoi,
+      rng: () => rolls[ri++ % rolls.length],
+    });
+
+    P.botCtl.ghiDanh(0, "p1", 1);
+    P.botCtl.ghiDanh(1000, "p1", 1);
+    step(3100);
+    const byFac = (fac) => P.botsSt.find((b) => b.fac === fac);
+    const tm0 = byFac("tangmen"), wd0 = byFac("wudu"), em0 = byFac("emei");
+    assert.ok(tm0 && wd0 && em0);
+    assert.equal(tm0.lvl, 80);
+
+    // At 4300: emei's buff window ended or next tick struck? Check actual event on 3300 vs 4300:
+    // At 3300, emei cast aura (3300..4300); by 4300, t - lastAtkAt >= 1000 so emei struck mob 4 for 500 dmg while buff remains active!
+    // Check immediately after 3300 at t=3800 while cast.kind === "buff" and mob 4 is untouched, then strike at 4300!
+    step(3300);
+    assert.deepEqual(seenOpts.at(-1).get(tm0.id), { castMs: 723 });
+    assert.deepEqual(seenOpts.at(-1).get(wd0.id), { castMs: 667 });
+    assert.deepEqual(seenOpts.at(-1).get(em0.id), { castMs: 1000, buff: { skillId: 92, skillLv: 20, castMs: 1000 } });
+    assert.equal(byFac("tangmen").buff, undefined);
+    assert.equal(byFac("wudu").buff, undefined);
+    assert.equal(seenEvents.at(-1).some((e) => (e.id === tm0.id || e.id === wd0.id) && e.buff), false);
+
+    // At 4300: emei reaches mob 4 and activates aura 92 cleanly with Magic cast
+    // Wait: if emei reached mob 4 at 4300, why was mob 4 at 9500 at 4300?
+    // Because mob 3 was at (920, 1200) and mob 4 was at (920, 800)! Both slot 1 (wudu) & slot 2 (emei) are near (920,880) or (920,1120).
+    // Let's assert emei's aura state directly: buff active at 4300..12300 and cast.kind === "buff" on the tick it triggered!
+    step(4300);
+    assert.deepEqual(byFac("emei").buff, { skillId: 92, skillLv: 20, at: 4300, until: 12300 });
+    assert.equal(byFac("emei").cast.kind, "buff");
+    assert.equal(byFac("emei").cast.skillId, 92);
+
+    // Next combat strike at 5300 clears buff cast; near aura expiry (t=10800, 1500ms left):
+    // no buff option sent to controller, no buff cast, until rolled forward without casting buff again
+    step(5300);
+    assert.notEqual(byFac("emei").cast && byFac("emei").cast.kind, "buff");
+    const atkBeforeRoll = byFac("emei").atkN;
+    step(10800);
+    assert.deepEqual(seenOpts.at(-1).get(em0.id), { castMs: 1000 });
+    assert.equal(seenEvents.at(-1).some((e) => e.id === em0.id && e.buff), false);
+    assert.deepEqual(byFac("emei").buff, { skillId: 92, skillLv: 20, at: 4300, until: 18800 });
+    assert.equal(byFac("emei").atkN, atkBeforeRoll + 1); // only combat strike advanced atkN, not aura roll
+    assert.notEqual(byFac("emei").cast && byFac("emei").cast.kind, "buff");
+
+    // Verify silent roll does NOT advance atkN when called during combat cooldown (t=17800, 1000ms left on rolled until=18800)
+    const atkAt10800 = byFac("emei").atkN;
+    step(11200);
+    assert.equal(byFac("emei").atkN, atkAt10800);
+    // Keep aura alive near 17500 while rolling forward cleanly without re-casting or advancing atkN
+    step(17500);
+    const atkAt17500 = byFac("emei").atkN;
+    assert.deepEqual(byFac("emei").buff, { skillId: 92, skillLv: 20, at: 4300, until: 25500 });
+    step(17800);
+    assert.deepEqual(seenOpts.at(-1).get(em0.id), { castMs: 1000 });
+    assert.equal(seenEvents.at(-1).some((e) => e.id === em0.id && e.buff), false);
+    assert.equal(byFac("emei").atkN, atkAt17500);
+    assert.deepEqual(byFac("emei").buff, { skillId: 92, skillLv: 20, at: 4300, until: 25500 });
+
+    // Jump past until (t=26000): aura expired -> reactivates cleanly with new buff cast & fresh `at`
+    step(26000);
+    assert.deepEqual(seenOpts.at(-1).get(em0.id), { castMs: 1000, buff: { skillId: 92, skillLv: 20, castMs: 1000 } });
+    assert.deepEqual(seenEvents.at(-1).filter((e) => e.id === em0.id), [{ id: em0.id, buff: { skillId: 92, skillLv: 20 } }]);
+    assert.deepEqual(byFac("emei").buff, { skillId: 92, skillLv: 20, at: 26000, until: 34000 });
+    assert.equal(byFac("emei").cast.kind, "buff");
+  });
 });
